@@ -1,0 +1,71 @@
+[versions]
+agp = "8.8.2"
+kotlin = "2.1.10"
+ksp = "2.1.10-1.0.31"
+compose-bom = "2025.03.00"
+hilt = "2.56.2"
+lifecycle = "2.9.0"
+navigation = "2.8.9"
+timber = "5.0.1"
+leakcanary = "2.14"
+core-ktx = "1.16.0"
+activity-compose = "1.10.1"
+hilt-navigation-compose = "1.2.0"
+coil = "3.1.0"
+kotlinx-serialization-json = "1.7.3"
+kotlinx-collections-immutable = "0.3.8"
+
+[libraries]
+# AndroidX Core
+core-ktx = { module = "androidx.core:core-ktx", version.ref = "core-ktx" }
+activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activity-compose" }
+
+# Compose BOM
+compose-bom = { module = "androidx.compose:compose-bom", version.ref = "compose-bom" }
+compose-material3 = { module = "androidx.compose.material3:material3" }
+compose-ui = { module = "androidx.compose.ui:ui" }
+compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+
+# Navigation
+navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation" }
+
+# Lifecycle
+lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+
+# Hilt
+hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
+hilt-compiler = { module = "com.google.dagger:hilt-compiler", version.ref = "hilt" }
+hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hilt-navigation-compose" }
+
+# Image Loading
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+
+# Serialization
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
+
+# Immutable Collections
+kotlinx-collections-immutable = { module = "org.jetbrains.kotlinx:kotlinx-collections-immutable", version.ref = "kotlinx-collections-immutable" }
+
+# Logging
+timber = { module = "com.jakewharton.timber:timber", version.ref = "timber" }
+
+# Debug
+leakcanary = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanary" }
+
+# Testing
+junit = { module = "junit:junit", version = "4.13.2" }
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+android-library = { id = "com.android.library", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
