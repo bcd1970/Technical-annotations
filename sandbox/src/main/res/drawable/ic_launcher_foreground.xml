@@ -4,15 +4,32 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Flask body -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,30 L54,78 M30,54 L78,54 M36,36 L72,72 M72,36 L36,72"
+        android:pathData="M46,38 L46,55 L32,75 C30,78 32,82 36,82 L72,82 C76,82 78,78 76,75 L62,55 L62,38"
+        android:fillColor="#FF6F00"
+        android:fillAlpha="0.85" />
+    <!-- Flask neck -->
+    <path
+        android:pathData="M46,28 L46,38 L62,38 L62,28 Z"
+        android:fillColor="#FF8F00" />
+    <!-- Flask rim -->
+    <path
+        android:pathData="M42,28 L66,28"
         android:strokeWidth="3"
-        android:strokeColor="#1565C0" />
+        android:strokeColor="#FF6F00"
+        android:strokeLineCap="round" />
+    <!-- Bubbles -->
     <path
-        android:fillColor="#1565C0"
-        android:pathData="M54,54m-18,0a18,18 0,1 1,36 0a18,18 0,1 1,-36 0"
-        android:strokeWidth="2"
-        android:strokeColor="#1565C0"
-        android:fillAlpha="0" />
+        android:pathData="M50,65 m-3,0 a3,3 0,1 1,6 0 a3,3 0,1 1,-6 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.7" />
+    <path
+        android:pathData="M58,70 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.7" />
+    <path
+        android:pathData="M54,60 m-2,0 a2,2 0,1 1,4 0 a2,2 0,1 1,-4 0"
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.5" />
 </vector>

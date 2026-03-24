@@ -1,0 +1,23 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; case \"$f\" in */app/src/*.kt|*/sandbox/src/*.kt|*/core/src/*.kt) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"REMINDER: You must have an approved plan before editing source files. If you have not entered plan mode, created a plan, and received approval for this feature — STOP and do that first. Also update DECISIONS.md with any decisions made.\"}}' ;; *) echo '{}' ;; esac; }",
+            "timeout": 5,
+            "statusMessage": "Checking plan-first workflow..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; case \"$f\" in */app/src/*.kt) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"PORT CHECK: You are editing a main app source file. Before marking this task complete you MUST: 1) Compare the sandbox version and the app version side-by-side to verify feature parity. 2) Check that ALL behaviors from sandbox are present in the app version — do not skip edge cases, clamping, animations, or gesture handling. 3) Build and install BOTH apps and confirm they behave identically.\"}}' ;; *) echo '{}' ;; esac; }",
+            "timeout": 5,
+            "statusMessage": "Checking port parity..."
+          }
+        ]
+      }
+    ]
+  }
+}

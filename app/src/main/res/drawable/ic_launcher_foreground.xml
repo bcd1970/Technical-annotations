@@ -4,15 +4,25 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Pencil body -->
     <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M54,30 L54,78 M30,54 L78,54 M36,36 L72,72 M72,36 L36,72"
+        android:pathData="M38,70 L58,30 L68,35 L48,75 Z"
+        android:fillColor="#1565C0" />
+    <!-- Pencil tip -->
+    <path
+        android:pathData="M38,70 L34,78 L48,75 Z"
+        android:fillColor="#FFC107" />
+    <!-- Pencil top -->
+    <path
+        android:pathData="M58,30 L62,22 L72,27 L68,35 Z"
+        android:fillColor="#E91E63" />
+    <!-- Ruler -->
+    <path
+        android:pathData="M60,50 L80,50"
         android:strokeWidth="3"
         android:strokeColor="#1565C0" />
     <path
-        android:fillColor="#1565C0"
-        android:pathData="M54,54m-18,0a18,18 0,1 1,36 0a18,18 0,1 1,-36 0"
-        android:strokeWidth="2"
-        android:strokeColor="#1565C0"
-        android:fillAlpha="0" />
+        android:pathData="M60,50 L60,46 M66,50 L66,48 M72,50 L72,46 M78,50 L78,48"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1565C0" />
 </vector>

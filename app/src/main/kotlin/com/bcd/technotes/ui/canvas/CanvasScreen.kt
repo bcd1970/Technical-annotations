@@ -1,4 +1,4 @@
-package com.bcd.technotes.sandbox.experiments
+package com.bcd.technotes.ui.canvas
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -7,8 +7,6 @@ import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -28,7 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,9 +42,10 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
 import androidx.core.content.ContextCompat
+import com.bcd.technotes.ui.photo.PhotoPickerScreen
 
 @Composable
-fun CanvasExperiment() {
+fun CanvasScreen() {
     val context = LocalContext.current
 
     var backgroundImage by remember { mutableStateOf<ImageBitmap?>(null) }

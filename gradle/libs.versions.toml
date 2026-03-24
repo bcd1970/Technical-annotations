@@ -14,6 +14,7 @@ hilt-navigation-compose = "1.2.0"
 coil = "3.1.0"
 kotlinx-serialization-json = "1.7.3"
 kotlinx-collections-immutable = "0.3.8"
+telephoto = "0.14.0"
 
 [libraries]
 # AndroidX Core
@@ -43,6 +44,9 @@ hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", ve
 
 # Image Loading
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
+
+# Zoomable Image
+telephoto-zoomable-coil = { module = "me.saket.telephoto:zoomable-image-coil3", version.ref = "telephoto" }
 
 # Serialization
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }
