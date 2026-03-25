@@ -16,7 +16,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,9 +27,17 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddPhotoAlternate
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Crop
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Flip
+import androidx.compose.material.icons.automirrored.filled.RotateRight
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -39,6 +50,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -62,6 +74,13 @@ import com.bcd.technotes.ui.photo.PhotoPickerScreen
 import com.bcd.technotes.ui.util.EditableTouchImageView
 import com.bcd.technotes.ui.util.updateDoubleTapScale
 
+data class PhotoTransform(
+    val flipH: Boolean = false,
+    val flipV: Boolean = false,
+    val rotation: Int = 0,
+    val cropRect: RectF? = null
+)
+
 @Composable
 fun CanvasScreen() {
     val context = LocalContext.current
@@ -82,6 +101,11 @@ fun CanvasScreen() {
             ) == PackageManager.PERMISSION_GRANTED
         )
     }
+    var photoTransforms by remember { mutableStateOf<List<PhotoTransform>>(emptyList()) }
+    var addingToCollage by remember { mutableStateOf(false) }
+    var cropMode by remember { mutableStateOf(false) }
+    var editableView by remember { mutableStateOf<EditableTouchImageView?>(null) }
+    val bitmapCache = remember { mutableMapOf<Uri, Bitmap>() }
 
     val permission = if (Build.VERSION.SDK_INT >= 33) {
         Manifest.permission.READ_MEDIA_IMAGES
@@ -113,16 +137,40 @@ fun CanvasScreen() {
     var activePhotoIndex by remember { mutableIntStateOf(-1) }
     var lastBitmapPoint by remember { mutableStateOf(PointF(0f, 0f)) }
 
-    BackHandler(enabled = editMode) {
-        editMode = false
-        activePhotoIndex = -1
+    BackHandler(enabled = editMode || cropMode) {
+        if (cropMode) {
+            cropMode = false
+            editableView?.cropMode = false
+        } else {
+            editMode = false
+            activePhotoIndex = -1
+        }
     }
 
-    // Stitch collage: decode all photos, scale to uniform height, draw side-by-side
-    LaunchedEffect(selectedUris) {
-        if (selectedUris.size < 2) return@LaunchedEffect
+    // Decode + stitch collage with bitmap cache (decode only on new URIs, re-stitch on transform changes)
+    LaunchedEffect(selectedUris, photoTransforms) {
+        if (selectedUris.size < 2) {
+            bitmapCache.keys.retainAll(selectedUris.toSet())
+            if (selectedUris.isEmpty()) photoBounds = emptyList()
+            return@LaunchedEffect
+        }
+
+        val missing = selectedUris.filter { it !in bitmapCache }
+        if (missing.isNotEmpty()) {
+            val decoded = withContext(Dispatchers.IO) {
+                missing.mapNotNull { uri ->
+                    decodePhoto(context, uri)?.let { uri to it }
+                }
+            }
+            decoded.forEach { (uri, bmp) -> bitmapCache[uri] = bmp }
+        }
+        bitmapCache.keys.retainAll(selectedUris.toSet())
+
+        val bitmaps = selectedUris.mapNotNull { bitmapCache[it] }
+        if (bitmaps.size < 2) return@LaunchedEffect
+
         val result = withContext(Dispatchers.IO) {
-            stitchCollage(context, selectedUris)
+            stitchFromBitmaps(bitmaps, photoTransforms)
         }
         backgroundBitmap = result?.bitmap
         photoBounds = result?.photoBounds ?: emptyList()
@@ -141,20 +189,33 @@ fun CanvasScreen() {
         PhotoPickerScreen(
             onPhotosConfirmed = { uris ->
                 showPicker = false
-                editMode = false
-                activePhotoIndex = -1
-                if (uris.size == 1) {
-                    pendingUri = uris.first()
-                    selectedUris = emptyList()
+                if (addingToCollage) {
+                    addingToCollage = false
+                    selectedUris = selectedUris + uris
+                    photoTransforms = photoTransforms + uris.map { PhotoTransform() }
                 } else {
-                    backgroundBitmap = null
-                    selectedUris = uris
+                    editMode = false
+                    activePhotoIndex = -1
+                    if (uris.size == 1) {
+                        pendingUri = uris.first()
+                        selectedUris = emptyList()
+                        photoTransforms = emptyList()
+                    } else {
+                        backgroundBitmap = null
+                        selectedUris = uris
+                        photoTransforms = uris.map { PhotoTransform() }
+                    }
                 }
             },
-            onDismiss = { showPicker = false }
+            onDismiss = {
+                showPicker = false
+                addingToCollage = false
+            }
         )
         return
     }
+
+    val isCollage = selectedUris.size >= 2 && backgroundBitmap != null
 
     Box(
         modifier = Modifier
@@ -210,15 +271,22 @@ fun CanvasScreen() {
                             onReorderComplete = { newOrder ->
                                 val viewActiveIndex = this.activePhotoIndex
                                 selectedUris = newOrder.map { selectedUris[it] }
+                                photoTransforms = newOrder.map { photoTransforms[it] }
                                 activePhotoIndex = newOrder.indexOf(viewActiveIndex)
                             }
-                        }
+                        }.also { editableView = it }
                     },
                     update = { view ->
                         view.setImageBitmap(bitmap)
                         view.photoBounds = photoBounds
                         view.editMode = editMode
                         view.activePhotoIndex = activePhotoIndex
+                        if (cropMode && !view.cropMode) {
+                            view.cropMode = true
+                            view.initCropRect()
+                        } else if (!cropMode && view.cropMode) {
+                            view.cropMode = false
+                        }
                         view.post { view.updateDoubleTapScale() }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -234,16 +302,144 @@ fun CanvasScreen() {
             }
         }
 
-        // Collage thumbnail bar
-        if (selectedUris.size >= 2 && backgroundBitmap != null) {
-            CollageThumbBar(
-                bitmap = backgroundBitmap!!,
-                viewportRect = viewportRect,
-                isZoomed = isZoomed,
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .navigationBarsPadding()
-            )
+        // Bottom controls: command bar + thumbnail bar
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .navigationBarsPadding()
+        ) {
+            // Crop mode: confirm / cancel
+            if (cropMode && activePhotoIndex >= 0 && isCollage) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0x99000000)),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        cropMode = false
+                        editableView?.cropMode = false
+                    }) {
+                        Icon(Icons.Default.Close, "Cancel crop", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        val view = editableView ?: return@IconButton
+                        val i = activePhotoIndex
+                        val pb = photoBounds.getOrNull(i) ?: return@IconButton
+                        val cr = view.cropRect
+                        val normalizedCrop = RectF(
+                            (cr.left - pb.left) / pb.width(),
+                            (cr.top - pb.top) / pb.height(),
+                            (cr.right - pb.left) / pb.width(),
+                            (cr.bottom - pb.top) / pb.height()
+                        )
+                        photoTransforms = photoTransforms.toMutableList().apply {
+                            this[i] = this[i].copy(cropRect = normalizedCrop)
+                        }
+                        cropMode = false
+                        view.cropMode = false
+                    }) {
+                        Icon(Icons.Default.Check, "Confirm crop", tint = Color.White)
+                    }
+                }
+            }
+            // Edit command bar
+            else if (editMode && activePhotoIndex >= 0 && isCollage) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0x99000000)),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        val i = activePhotoIndex
+                        photoTransforms = photoTransforms.toMutableList().apply {
+                            this[i] = this[i].copy(flipH = !this[i].flipH)
+                        }
+                    }) {
+                        Icon(Icons.Default.Flip, "Flip horizontal", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        val i = activePhotoIndex
+                        photoTransforms = photoTransforms.toMutableList().apply {
+                            this[i] = this[i].copy(flipV = !this[i].flipV)
+                        }
+                    }) {
+                        Icon(
+                            Icons.Default.Flip, "Flip vertical",
+                            tint = Color.White,
+                            modifier = Modifier.graphicsLayer { rotationZ = 90f }
+                        )
+                    }
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        val i = activePhotoIndex
+                        photoTransforms = photoTransforms.toMutableList().apply {
+                            this[i] = this[i].copy(rotation = (this[i].rotation + 90) % 360)
+                        }
+                    }) {
+                        Icon(Icons.AutoMirrored.Filled.RotateRight, "Rotate 90\u00B0", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        // Clear existing crop so user crops from full photo
+                        val i = activePhotoIndex
+                        if (photoTransforms[i].cropRect != null) {
+                            photoTransforms = photoTransforms.toMutableList().apply {
+                                this[i] = this[i].copy(cropRect = null)
+                            }
+                        }
+                        cropMode = true
+                    }) {
+                        Icon(Icons.Default.Crop, "Crop", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        addingToCollage = true
+                        showPicker = true
+                    }) {
+                        Icon(Icons.Default.AddPhotoAlternate, "Add photo", tint = Color.White)
+                    }
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        val i = activePhotoIndex
+                        val newUris = selectedUris.toMutableList().apply { removeAt(i) }
+                        val newTransforms = photoTransforms.toMutableList().apply { removeAt(i) }
+                        if (newUris.size < 2) {
+                            editMode = false
+                            activePhotoIndex = -1
+                            if (newUris.size == 1) {
+                                pendingUri = newUris.first()
+                                selectedUris = emptyList()
+                                photoTransforms = emptyList()
+                            } else {
+                                selectedUris = emptyList()
+                                photoTransforms = emptyList()
+                                backgroundBitmap = null
+                            }
+                        } else {
+                            selectedUris = newUris
+                            photoTransforms = newTransforms
+                            activePhotoIndex = i.coerceAtMost(newUris.size - 1)
+                        }
+                    }) {
+                        Icon(Icons.Default.Delete, "Remove photo", tint = Color.White)
+                    }
+                }
+            }
+
+            // Collage thumbnail bar
+            if (isCollage) {
+                CollageThumbBar(
+                    bitmap = backgroundBitmap!!,
+                    viewportRect = viewportRect,
+                    isZoomed = isZoomed
+                )
+            }
         }
 
         FloatingActionButton(
@@ -255,7 +451,14 @@ fun CanvasScreen() {
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .navigationBarsPadding()
-                .padding(bottom = if (selectedUris.size >= 2 && backgroundBitmap != null) 80.dp else 24.dp, end = 24.dp, top = 24.dp, start = 24.dp),
+                .padding(
+                    bottom = when {
+                        (cropMode || editMode) && activePhotoIndex >= 0 && isCollage -> 128.dp
+                        isCollage -> 80.dp
+                        else -> 24.dp
+                    },
+                    end = 24.dp, top = 24.dp, start = 24.dp
+                ),
             containerColor = MaterialTheme.colorScheme.primary
         ) {
             Icon(imageVector = Icons.Default.CameraAlt, contentDescription = "Load photo")
@@ -316,48 +519,72 @@ data class CollageResult(
     val photoBounds: List<RectF>
 )
 
-private fun stitchCollage(context: android.content.Context, uris: List<Uri>): CollageResult? {
-    // Decode all bitmaps with downsampling to ~2x screen height
+private fun decodePhoto(context: android.content.Context, uri: Uri): Bitmap? {
     val displayHeight = context.resources.displayMetrics.heightPixels
     val targetMaxHeight = displayHeight * 2
-
-    val bitmaps = uris.mapNotNull { uri ->
-        try {
+    return try {
+        context.contentResolver.openInputStream(uri)?.use { stream ->
+            val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeStream(stream, null, opts)
+            opts
+        }?.let { opts ->
+            val sampleSize = calculateInSampleSize(opts.outHeight, targetMaxHeight)
             context.contentResolver.openInputStream(uri)?.use { stream ->
-                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-                BitmapFactory.decodeStream(stream, null, opts)
-                opts
-            }?.let { opts ->
-                val sampleSize = calculateInSampleSize(opts.outHeight, targetMaxHeight)
-                context.contentResolver.openInputStream(uri)?.use { stream ->
-                    BitmapFactory.decodeStream(
-                        stream, null,
-                        BitmapFactory.Options().apply { inSampleSize = sampleSize }
-                    )
-                }
+                BitmapFactory.decodeStream(
+                    stream, null,
+                    BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                )
             }
-        } catch (_: Exception) { null }
+        }
+    } catch (_: Exception) { null }
+}
+
+private fun applyTransform(bitmap: Bitmap, transform: PhotoTransform): Bitmap {
+    if (!transform.flipH && !transform.flipV && transform.rotation == 0 && transform.cropRect == null) return bitmap
+
+    var current = bitmap
+
+    // Rotate + flip first
+    if (transform.flipH || transform.flipV || transform.rotation != 0) {
+        val matrix = Matrix()
+        if (transform.flipH) matrix.postScale(-1f, 1f)
+        if (transform.flipV) matrix.postScale(1f, -1f)
+        matrix.postRotate(transform.rotation.toFloat())
+        current = Bitmap.createBitmap(current, 0, 0, current.width, current.height, matrix, true)
     }
 
-    if (bitmaps.size < 2) {
-        bitmaps.forEach { it.recycle() }
-        return null
+    // Crop last (applied to post-transform photo)
+    if (transform.cropRect != null) {
+        val cr = transform.cropRect
+        val x = (cr.left * current.width).toInt().coerceIn(0, current.width - 1)
+        val y = (cr.top * current.height).toInt().coerceIn(0, current.height - 1)
+        val w = ((cr.right - cr.left) * current.width).toInt().coerceAtMost(current.width - x).coerceAtLeast(1)
+        val h = ((cr.bottom - cr.top) * current.height).toInt().coerceAtMost(current.height - y).coerceAtLeast(1)
+        val cropped = Bitmap.createBitmap(current, x, y, w, h)
+        if (current !== bitmap) current.recycle()
+        current = cropped
     }
 
-    // Uniform height = min of all decoded heights (no upscaling)
-    val uniformHeight = bitmaps.minOf { it.height }
+    return current
+}
 
-    // Calculate scaled widths
-    val scaledWidths = bitmaps.map { bmp ->
+private fun stitchFromBitmaps(bitmaps: List<Bitmap>, transforms: List<PhotoTransform>): CollageResult? {
+    if (bitmaps.size < 2) return null
+
+    val transformed = bitmaps.mapIndexed { i, bmp ->
+        applyTransform(bmp, transforms.getOrElse(i) { PhotoTransform() })
+    }
+
+    val uniformHeight = transformed.minOf { it.height }
+    val scaledWidths = transformed.map { bmp ->
         (bmp.width * (uniformHeight.toFloat() / bmp.height)).toInt()
     }
     val totalWidth = scaledWidths.sum()
 
-    // Create result bitmap and draw each photo side-by-side
     val result = Bitmap.createBitmap(totalWidth, uniformHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(result)
     var x = 0f
-    bitmaps.forEachIndexed { i, bmp ->
+    transformed.forEachIndexed { i, bmp ->
         val scale = uniformHeight.toFloat() / bmp.height
         val matrix = Matrix().apply {
             postScale(scale, scale)
@@ -365,7 +592,11 @@ private fun stitchCollage(context: android.content.Context, uris: List<Uri>): Co
         }
         canvas.drawBitmap(bmp, matrix, null)
         x += scaledWidths[i]
-        bmp.recycle()
+    }
+
+    // Recycle only transform-created copies, not cached originals
+    transformed.forEachIndexed { i, tbmp ->
+        if (tbmp !== bitmaps[i]) tbmp.recycle()
     }
 
     val bounds = mutableListOf<RectF>()

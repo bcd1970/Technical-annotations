@@ -331,3 +331,34 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 |---|-------------------|---------|-------|
 | 1 | Remove edit-mode branch from CollageThumbBar, always show stitched bitmap + viewport indicator | SUCCESS | Removed editMode/thumbnails/activePhotoIndex params. Reorder triggers re-stitch via selectedUris update → LaunchedEffect → new backgroundBitmap → thumbnail bar updates naturally |
 | 2 | Remove thumbnails from CollageResult and stitchCollage | SUCCESS | Thumbnail generation (112px scaled copies) no longer needed — removed state variable, data class field, and generation loop. Saves memory and stitching time |
+
+### Collage Single-Photo Editor Commands — 2026-03-25
+
+**Goal:** Add editing commands (flip H/V, rotate 90°, crop, add photo, remove photo) to the active photo in collage edit mode, working in both fit and zoomed states
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | PhotoTransform data class (flipH, flipV, rotation) + per-photo transform list | SUCCESS | Clean separation of transform state from URI list. Transform order: rotate first, then flip (via Matrix postScale before postRotate) |
+| 2 | Bitmap cache + split decode/stitch: cache decoded bitmaps by URI, only re-stitch on transform changes | SUCCESS | `bitmapCache: MutableMap<Uri, Bitmap>` avoids re-decoding on flip/rotate/reorder. Single LaunchedEffect(selectedUris, photoTransforms) handles both decode (cache miss) and stitch. Cache trimmed on URI changes |
+| 3 | applyTransform creates new Bitmap only when transform is non-identity, recycles copies after stitch | SUCCESS | Reference equality check (`!==`) distinguishes transform copies from cached originals. Originals stay in cache for reuse |
+| 4 | Command bar: Row with SpaceEvenly IconButtons above thumbnail bar in a Column | SUCCESS | Column stacks command bar + thumb bar naturally. Bar appears when editMode && activePhotoIndex >= 0 && isCollage. Semi-transparent dark background matching thumb bar |
+| 5 | Flip V icon: Flip icon rotated 90° via graphicsLayer { rotationZ = 90f } | SUCCESS | No separate vertical flip icon in Material Icons — rotating horizontal flip icon is intuitive |
+| 6 | Add photo: addingToCollage flag + reuse PhotoPickerScreen | SUCCESS | On confirm, appends new URIs + default transforms to existing lists. Picker dismiss resets flag |
+| 7 | Remove photo: handles 2→1 (switch to single-photo mode), 2→0 (empty state), and N→N-1 (adjust activePhotoIndex) | SUCCESS | When reducing to 1 photo, sets pendingUri and clears collage state. activePhotoIndex clamped to new list size |
+| 8 | Reorder callback also reorders photoTransforms alongside selectedUris | SUCCESS | Transforms stay paired with their photos through reorder operations |
+| 9 | AutoMirrored.Filled.RotateRight instead of deprecated Icons.Default.RotateRight | SUCCESS | Fixed deprecation warning |
+| 10 | Crop mode in EditableTouchImageView: 8 handles (4 corners + 4 mid-sides) + move | SUCCESS | Handles drawn as white circles with dark border. Hit test with 24dp radius for easy touch targeting. Dim overlay outside crop rect within photo bounds. Crop touch handled before edit/zoom in dispatchTouchEvent |
+| 11 | Crop rect normalized 0-1 relative to photo bounds in stitched bitmap | SUCCESS | Normalized crop stored in PhotoTransform.cropRect. Applied after rotate/flip in applyTransform — crop is on the post-transform photo, matching what the user sees |
+| 12 | Crop confirm/cancel bar replaces edit command bar during crop mode | SUCCESS | Close (X) cancels, Check confirms. Confirm normalizes cropRect and stores in transforms, triggering re-stitch |
+| 13 | Re-entering crop clears existing crop first | SUCCESS | Pressing crop on already-cropped photo resets cropRect to null, re-stitches to show full photo, then enters crop mode. User always crops from full photo |
+| 14 | applyTransform handles intermediate bitmap lifecycle | SUCCESS | If both rotate/flip and crop are applied, the intermediate bitmap is recycled. Original cached bitmap is never recycled (reference check via `!==`) |
+
+### Port Editor Commands + Crop to Main App — 2026-03-25
+
+**Goal:** Port all collage editor commands (flip H/V, rotate 90°, crop, add photo, remove photo) and crop mode from sandbox to main app
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Full rewrite of app EditableTouchImageView to match sandbox (crop mode, handles, overlay, touch) | SUCCESS | Side-by-side diff verified — zero functional differences after package normalization |
+| 2 | Full rewrite of app CanvasScreen to match sandbox (PhotoTransform, bitmap cache, command bar, crop mode) | SUCCESS | Side-by-side diff verified — only difference is extra PhotoPickerScreen import (different package in app) |
+| 3 | Both apps build and install clean | SUCCESS | No warnings, no compliance/security findings |
