@@ -2,7 +2,10 @@ package com.bcd.technotes.ui.canvas
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Canvas
+import android.graphics.Matrix
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -12,16 +15,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -73,7 +71,7 @@ fun CanvasScreen() {
         if (granted) showPicker = true
     }
 
-    // Decode bitmap off main thread
+    // Decode single photo off main thread
     LaunchedEffect(pendingUri) {
         pendingUri?.let { uri ->
             backgroundBitmap = withContext(Dispatchers.IO) {
@@ -82,6 +80,14 @@ fun CanvasScreen() {
                 }
             }
             pendingUri = null
+        }
+    }
+
+    // Stitch collage: decode all photos, scale to uniform height, draw side-by-side
+    LaunchedEffect(selectedUris) {
+        if (selectedUris.size < 2) return@LaunchedEffect
+        backgroundBitmap = withContext(Dispatchers.IO) {
+            stitchCollage(context, selectedUris)
         }
     }
 
@@ -117,9 +123,6 @@ fun CanvasScreen() {
             .background(MaterialTheme.colorScheme.surfaceVariant)
     ) {
         when {
-            selectedUris.size >= 2 -> {
-                CollagePlaceholder(photoCount = selectedUris.size)
-            }
             backgroundBitmap != null -> {
                 val bitmap = backgroundBitmap!!
                 AndroidView(
@@ -165,25 +168,65 @@ fun CanvasScreen() {
     }
 }
 
-@Composable
-private fun CollagePlaceholder(photoCount: Int) {
-    Box(
-        modifier = Modifier.fillMaxSize(),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(
-                imageVector = Icons.Default.Dashboard,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "$photoCount photos selected for collage",
-                style = MaterialTheme.typography.headlineSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
+private fun stitchCollage(context: android.content.Context, uris: List<Uri>): Bitmap? {
+    // Decode all bitmaps with downsampling to ~2x screen height
+    val displayHeight = context.resources.displayMetrics.heightPixels
+    val targetMaxHeight = displayHeight * 2
+
+    val bitmaps = uris.mapNotNull { uri ->
+        try {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val opts = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeStream(stream, null, opts)
+                opts
+            }?.let { opts ->
+                val sampleSize = calculateInSampleSize(opts.outHeight, targetMaxHeight)
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(
+                        stream, null,
+                        BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                    )
+                }
+            }
+        } catch (_: Exception) { null }
     }
+
+    if (bitmaps.size < 2) {
+        bitmaps.forEach { it.recycle() }
+        return null
+    }
+
+    // Uniform height = min of all decoded heights (no upscaling)
+    val uniformHeight = bitmaps.minOf { it.height }
+
+    // Calculate scaled widths
+    val scaledWidths = bitmaps.map { bmp ->
+        (bmp.width * (uniformHeight.toFloat() / bmp.height)).toInt()
+    }
+    val totalWidth = scaledWidths.sum()
+
+    // Create result bitmap and draw each photo side-by-side
+    val result = Bitmap.createBitmap(totalWidth, uniformHeight, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(result)
+    var x = 0f
+    bitmaps.forEachIndexed { i, bmp ->
+        val scale = uniformHeight.toFloat() / bmp.height
+        val matrix = Matrix().apply {
+            postScale(scale, scale)
+            postTranslate(x, 0f)
+        }
+        canvas.drawBitmap(bmp, matrix, null)
+        x += scaledWidths[i]
+        bmp.recycle()
+    }
+
+    return result
+}
+
+private fun calculateInSampleSize(actualHeight: Int, targetHeight: Int): Int {
+    var sampleSize = 1
+    while (actualHeight / (sampleSize * 2) >= targetHeight) {
+        sampleSize *= 2
+    }
+    return sampleSize
 }

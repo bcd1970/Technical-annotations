@@ -239,3 +239,19 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | 3 | **doOnLayout callback from androidx.core.view** | **SUCCESS** | Fires after view has dimensions AND after TouchImageView processes the new bitmap's layout. Guaranteed for both preloaded and newly created views |
 
 **Root cause:** HorizontalPager preloads ~2-3 pages. Those views are already laid out so view.width/height are valid. Beyond that, new AndroidView instances are created on demand — view dimensions are 0 when the `update` block runs. `post{}` and even double-post fire before the view's first layout pass completes. `doOnLayout` correctly waits.
+
+### Collage View — Horizontal Layout — 2026-03-25
+
+**Goal:** Display 2+ selected photos as a horizontal collage in the canvas editor with uniform height, no padding, and full zoom/pan/fling support
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Stitch photos into single bitmap, display in TouchImageView | SUCCESS | Decode all photos with inSampleSize downsampling (~2x screen height), scale to uniform height (min of all heights — no upscaling), draw side-by-side on a Canvas, feed result bitmap to existing TouchImageView. Zoom, pan, fling, double-tap all work for free |
+
+### Port Collage View to Main App — 2026-03-25
+
+**Goal:** Port horizontal collage stitching from sandbox to main app
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Replace CollagePlaceholder with stitchCollage + calculateInSampleSize, add collage LaunchedEffect, update imports | SUCCESS | Side-by-side verified — all functional code identical. No compliance/security findings. Both apps build and install clean |
