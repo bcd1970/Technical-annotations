@@ -175,3 +175,23 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | PreToolUse hook on Edit/Write for app/src/*.kt with AUDIT.md tracking | SUCCESS | Checks permissions, secrets, SQL injection, PII logging, cleartext traffic. Findings logged as FIXED or DEFERRED in AUDIT.md |
+
+### Port Multi-Photo Selection + Animations to Main App — 2026-03-25
+
+**Goal:** Port all sandbox features (multi-select, thumbnail strip, confirm FAB, auto-permission, collage placeholder) to main app
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Port PhotoPickerScreen: multi-select state, selection overlay, FAB row, thumbnail strip with animations | SUCCESS | Full rewrite of app's PhotoPickerScreen to match sandbox — callback changed from onPhotoSelected(Uri) to onPhotosConfirmed(List<Uri>) |
+| 2 | Port CanvasScreen: auto-permission, multi-photo handling, collage placeholder | SUCCESS | Added hasPermission state, LaunchedEffect auto-launch, selectedUris for multi-photo, CollagePlaceholder composable |
+| 3 | Side-by-side verification | SUCCESS | Zero behavioral differences — every function, state variable, animation, gesture handler, and query function verified identical |
+| 4 | Compliance & security audit | SUCCESS | No findings — parameterized queries, no secrets, no PII logging, correct permissions |
+| 5 | Build + install both apps | SUCCESS | Both apps build clean, installed and launched on device |
+
+### Preview Image Downsampling — 2026-03-25
+
+**Goal:** Downsample large photos in preview to prevent OOM and improve pager swipe smoothness
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Two-pass BitmapFactory decode: bounds-only pass then inSampleSize decode at ~2x screen resolution | SUCCESS | Already in sandbox, now ported to app. Graceful fallback to setImageURI on exception |
