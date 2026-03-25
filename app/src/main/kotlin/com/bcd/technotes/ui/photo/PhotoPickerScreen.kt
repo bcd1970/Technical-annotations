@@ -57,9 +57,8 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Precision
 import coil3.size.Size
-import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
-import me.saket.telephoto.zoomable.rememberZoomableImageState
-import me.saket.telephoto.zoomable.rememberZoomableState
+import androidx.compose.ui.viewinterop.AndroidView
+import com.ortiz.touchview.TouchImageView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -305,21 +304,66 @@ private fun PhotoGrid(photos: List<Photo>, onPhotoTap: (Uri) -> Unit, onPhotoLon
 @Composable
 private fun PhotoPreview(photos: List<Photo>, startIndex: Int, onPhotoLongPress: (Uri) -> Unit) {
     val pagerState = rememberPagerState(initialPage = startIndex, pageCount = { photos.size })
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize()) { page ->
+    var isZoomed by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            userScrollEnabled = !isZoomed,
+            modifier = Modifier.fillMaxSize()
+        ) { page ->
             val photo = photos[page]
-            val zoomableState = rememberZoomableState()
-            if (pagerState.settledPage != page) {
-                LaunchedEffect(Unit) { zoomableState.resetZoom() }
-            }
-            Box(modifier = Modifier.fillMaxSize().combinedClickable(onClick = {}, onLongClick = { onPhotoLongPress(photo.uri) })) {
-                ZoomableAsyncImage(model = photo.uri, contentDescription = null,
-                    state = rememberZoomableImageState(zoomableState), modifier = Modifier.fillMaxSize())
-            }
+
+            AndroidView(
+                factory = { ctx ->
+                    TouchImageView(ctx).apply {
+                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                        maxZoom = 10f
+                        minZoom = 1f
+                        setBackgroundColor(android.graphics.Color.BLACK)
+                        setOnLongClickListener {
+                            onPhotoLongPress(photo.uri)
+                            true
+                        }
+                        setOnTouchImageViewListener(object : com.ortiz.touchview.OnTouchImageViewListener {
+                            override fun onMove() {
+                                isZoomed = this@apply.isZoomed
+                            }
+                        })
+                    }
+                },
+                update = { view ->
+                    view.resetZoom()
+                    view.setImageURI(photo.uri)
+                    isZoomed = false
+                    view.post {
+                        val d = view.drawable ?: return@post
+                        val imgW = d.intrinsicWidth.toFloat()
+                        val imgH = d.intrinsicHeight.toFloat()
+                        val vW = view.width.toFloat()
+                        val vH = view.height.toFloat()
+                        if (imgW > 0 && imgH > 0 && vW > 0 && vH > 0) {
+                            view.doubleTapScale = maxOf(vW / imgW, vH / imgH) / minOf(vW / imgW, vH / imgH)
+                        }
+                    }
+                },
+                modifier = Modifier.fillMaxSize()
+            )
         }
-        Text("${pagerState.currentPage + 1} / ${photos.size}", color = Color.White,
+
+        Text(
+            text = "${pagerState.currentPage + 1} / ${photos.size}",
+            color = Color.White,
             style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = 16.dp))
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .statusBarsPadding()
+                .padding(top = 16.dp)
+        )
     }
 }
 

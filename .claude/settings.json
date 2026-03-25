@@ -15,6 +15,12 @@
             "command": "jq -r '.tool_input.file_path // empty' | { read -r f; case \"$f\" in */app/src/*.kt) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"PORT CHECK: You are editing a main app source file. Before marking this task complete you MUST: 1) Compare the sandbox version and the app version side-by-side to verify feature parity. 2) Check that ALL behaviors from sandbox are present in the app version — do not skip edge cases, clamping, animations, or gesture handling. 3) Build and install BOTH apps and confirm they behave identically.\"}}' ;; *) echo '{}' ;; esac; }",
             "timeout": 5,
             "statusMessage": "Checking port parity..."
+          },
+          {
+            "type": "command",
+            "command": "jq -r '.tool_input.file_path // empty' | { read -r f; case \"$f\" in */app/src/*.kt) echo '{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"additionalContext\":\"COMPLIANCE & SECURITY AUDIT: You are editing a main app source file. After completing the port you MUST review the code for: 1) GOOGLE PLAY STORE compliance — permissions declared only when needed, no background location/SMS/call log unless core feature, targetSdk meets current requirement, privacy policy implications, data safety section impact, no hardcoded API keys or secrets. 2) SECURITY — no SQL injection via raw queries, no logging of sensitive data (PII, tokens, passwords), no cleartext network traffic, no world-readable files, ContentProvider exports guarded, WebView JS injection risks, input validation at system boundaries. 3) For each finding: if the fix is safe and isolated, implement it immediately and note as FIXED in AUDIT.md. If the fix is risky, touches unrelated code, or needs broader discussion, log it as DEFERRED in AUDIT.md with reasoning. Always update AUDIT.md with a new section for this review.\"}}' ;; *) echo '{}' ;; esac; }",
+            "timeout": 5,
+            "statusMessage": "Compliance & security audit..."
           }
         ]
       }

@@ -118,3 +118,60 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | Disable pager userScrollEnabled when TouchImageView.isZoomed | SUCCESS | OnTouchImageViewListener.onMove reports zoom state, pager respects it |
+
+### Fit ↔ Fill Double-Tap Zoom — 2026-03-25
+
+**Goal:** Double-tap toggles between fit (full image visible) and fill (image fills viewport) instead of default maxZoom
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | TouchImageView.doubleTapScale = fillScale / fitScale | SUCCESS | Calculated in post{} after image load. fillScale = max(vW/imgW, vH/imgH), fitScale = min(vW/imgW, vH/imgH). Applied to both canvas and preview |
+
+### Port TouchImageView + Fit↔Fill to Main App — 2026-03-25
+
+**Goal:** Replace Compose Canvas and Telephoto in main app with TouchImageView (matching sandbox)
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Replace Compose Canvas + custom gesture math with TouchImageView in CanvasScreen | SUCCESS | Removed all custom zoom/pan/clamp logic, offset/scale state. TouchImageView handles fling, zoom, edge clamping natively |
+| 2 | Replace Telephoto ZoomableAsyncImage with TouchImageView in PhotoPreview | SUCCESS | Added isZoomed tracking, userScrollEnabled pager lock, doubleTapScale calculation — matches sandbox exactly |
+| 3 | Side-by-side port verification | SUCCESS | All behaviors verified identical: TouchImageView setup, doubleTapScale, post{} blocks, zoom tracking, pager lock, long-press, page counter |
+
+### Multi-Photo Selection — 2026-03-25
+
+**Goal:** Add multi-photo selection to picker for collage workflow (tap toggles selection, editor FAB routes 1→canvas / 2+→collage)
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Tap toggles selection (was: select+exit), long-press still opens preview | SUCCESS | Selection state as Set<Long> with MutableMap<Long,Photo> cache for cross-view persistence |
+| 2 | Checkbox + 30% overlay on selected grid photos | SUCCESS | CheckCircle icon at top-end, Color(0x4D000000) overlay — same pattern as PhotoCollageGlide |
+| 3 | Selected photos thumbnail strip at bottom (Row + horizontalScroll) | SUCCESS | 52dp thumbnails with Coil, SmallFAB remove (x) buttons, sits below main content |
+| 4 | Editor FAB + navigation FAB in horizontal Row above strip | SUCCESS | 1 photo = Edit icon, 2+ = Dashboard icon with count badge. Row layout avoids overlap with strip |
+| 5 | Single tap in preview also toggles selection | SUCCESS | setOnClickListener on TouchImageView alongside existing setOnLongClickListener |
+| 6 | App starts with recent photos grid (showPicker = true) | SUCCESS | Permission requested on launch via LaunchedEffect, then picker opens directly |
+| 7 | Collage placeholder screen | SUCCESS | Dashboard icon + "X photos selected for collage" text when 2+ URIs confirmed |
+| 8 | Title bar shows selection count | SUCCESS | "X selected" replaces "Recent" when selectedPhotoIds.isNotEmpty() |
+
+### Thumbnail Strip Animations — 2026-03-25
+
+**Goal:** Smooth pop-in animation for thumbnails and fling-style auto-scroll
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | LazyRow + Animatable.animateTo() with spring | FAILED | Animatable completes in 3ms — no MonotonicFrameClock driving frame-by-frame animation from coroutineScope.launch |
+| 2 | LazyRow + animateFloatAsState with spring | FAILED | Also completes in one frame — graphicsLayer reads trigger instant resolution |
+| 3 | LazyRow + AnimatedVisibility + MutableTransitionState | FAILED | LazyRow creates items off-screen, animation plays invisibly before scroll brings item into view |
+| 4 | Row + AnimatedVisibility(visible=true) | FAILED | visible=true means "already visible" — no false→true transition to animate |
+| 5 | Row + AnimatedVisibility + MutableTransitionState(false).apply{targetState=true} | FAILED | Transition completes in 35ms regardless of spring/tween params — AnimatedVisibility short-circuits in Row+horizontalScroll context |
+| 6 | Row + updateTransition + animateFloat | FAILED | Same 40ms completion — Compose transition APIs all resolve instantly in this layout context |
+| 7 | **Row + withFrameNanos manual frame loop + graphicsLayer** | **SUCCESS** | Manual loop with overshoot interpolation: 300ms pop-in (scale 0→1 + slide up + fade), 350ms decelerate auto-scroll. Bypasses all broken Compose animation APIs |
+
+**Root cause of all Compose animation failures:** Compose's animation APIs (Animatable, animateFloatAsState, AnimatedVisibility, updateTransition) all resolve instantly when used with graphicsLayer inside a Row+horizontalScroll context. The withFrameNanos suspend function is the only reliable way to drive frame-by-frame animations in this scenario.
+
+### Compliance & Security Audit Hook — 2026-03-25
+
+**Goal:** Auto-remind to audit Google Play Store compliance and security when editing main app source files
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | PreToolUse hook on Edit/Write for app/src/*.kt with AUDIT.md tracking | SUCCESS | Checks permissions, secrets, SQL injection, PII logging, cleartext traffic. Findings logged as FIXED or DEFERRED in AUDIT.md |

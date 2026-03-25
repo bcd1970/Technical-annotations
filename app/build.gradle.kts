@@ -77,6 +77,7 @@ dependencies {
     // Image Loading
     implementation(libs.coil.compose)
     implementation(libs.telephoto.zoomable.coil)
+    implementation(libs.touchimageview)
 
     // Immutable Collections
     implementation(libs.kotlinx.collections.immutable)
