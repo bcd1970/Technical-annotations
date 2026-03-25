@@ -89,3 +89,32 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | 5 | Dynamic minScale for zoom-out clamping on canvas | SUCCESS | minScale = max(canvasW/imageW, canvasH/imageH) — image always fills screen |
 | 6 | Preview zoom-out clamping | SUCCESS | Telephoto library handles this by default — no custom code needed |
 | 7 | Side-by-side diff after minScale port | SUCCESS | Only diffs are unused imports in sandbox — all functional code identical |
+
+### Fling/Momentum Implementation — 2026-03-24
+
+**Goal:** Add smooth fling momentum to canvas pan (like swiping in a photo gallery)
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Custom awaitEachGesture + VelocityTracker tracking offset position | FAILED | VelocityTracker saw clamped positions → zero velocity |
+| 2 | Same but tracking pan accumulator | FAILED | Velocity non-zero in logs but animateDecay block callback runs ONCE at end, not per-frame → instant jump |
+| 3 | Same but tracking finger position | FAILED | Velocity correct but animateDecay block is end-callback, not per-frame — misunderstood API |
+| 4 | Manual delay(16) loop with exponential decay | FAILED | Over-complicated, unreliable timing, abandoned before testing |
+| 5 | Telephoto Modifier.zoomable() on Canvas | FAILED | Edge clamping broken, content location mapping wrong for Canvas composable |
+| 6 | usuiat/Zoomable library (v2.4.0) | FAILED | Zero fling — library's onGestureEnd calls startFling but no visible momentum |
+| 7 | Google's official pattern: while(true) + awaitPointerEventScope + drag + Animatable.animateDecay | FAILED | Fling existed but very rough/brisk — far from native scroll smoothness |
+| 8 | Root cause: combinedClickable wrapper eating gestures in photo preview | FOUND | Removing it from preview showed telephoto/zoomable COULD work, but fling still brisk |
+| 9 | splineBasedDecay instead of exponentialDecay on usuiat/Zoomable | FAILED | Zero visible change — library may not respect the parameter in v2.4.0 |
+| 10 | **TouchImageView (native Android View via AndroidView)** | **SUCCESS** | MikeOrtiz/TouchImageView v3.7.1, Apache 2.0. Uses OverScroller.fling() — same engine as RecyclerView. Buttery smooth fling, zoom, edge clamping, double-tap. 10+ years battle-tested |
+
+**Root cause of all Compose failures:** Compose's gesture/animation system (Animatable, animateDecay, VelocityTracker) does not produce the same fling quality as Android's native OverScroller. The OverScroller has been tuned over 15 years and is what makes all native Android scrolling feel smooth.
+
+**Lesson:** For gestures that need native-quality feel (fling, scroll momentum), use Android's native View system wrapped in AndroidView rather than fighting Compose's gesture APIs.
+
+### Preview Pager + Zoom Conflict — 2026-03-24
+
+**Goal:** Prevent HorizontalPager from swiping pages when image is zoomed in
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Disable pager userScrollEnabled when TouchImageView.isZoomed | SUCCESS | OnTouchImageViewListener.onMove reports zoom state, pager respects it |
