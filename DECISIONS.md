@@ -322,3 +322,12 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | Create EditableTouchImageView in app/ui/util, port CanvasScreen with full edit mode + reorder, add haptic to all interactions in PhotoPickerScreen | SUCCESS | Side-by-side verified — all functional code identical (package names adapted). New file created: EditableTouchImageView.kt. No compliance/security findings. Both apps build and install clean |
+
+### Simplify Thumbnail Bar — Always Show Collage — 2026-03-25
+
+**Goal:** In edit mode, thumbnail bar should show the full stitched collage with viewport indicator (same as normal mode) instead of individual photo thumbnails. Reorder updates the collage automatically on completion.
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Remove edit-mode branch from CollageThumbBar, always show stitched bitmap + viewport indicator | SUCCESS | Removed editMode/thumbnails/activePhotoIndex params. Reorder triggers re-stitch via selectedUris update → LaunchedEffect → new backgroundBitmap → thumbnail bar updates naturally |
+| 2 | Remove thumbnails from CollageResult and stitchCollage | SUCCESS | Thumbnail generation (112px scaled copies) no longer needed — removed state variable, data class field, and generation loop. Saves memory and stitching time |

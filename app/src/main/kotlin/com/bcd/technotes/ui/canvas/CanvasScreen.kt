@@ -52,9 +52,6 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.core.content.ContextCompat
 import android.graphics.PointF
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.border
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
 import androidx.compose.runtime.mutableIntStateOf
 import com.ortiz.touchview.OnTouchImageViewListener
 import com.ortiz.touchview.OnTouchCoordinatesListener
@@ -112,7 +109,6 @@ fun CanvasScreen() {
     }
 
     var photoBounds by remember { mutableStateOf<List<RectF>>(emptyList()) }
-    var thumbnails by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
     var editMode by remember { mutableStateOf(false) }
     var activePhotoIndex by remember { mutableIntStateOf(-1) }
     var lastBitmapPoint by remember { mutableStateOf(PointF(0f, 0f)) }
@@ -130,7 +126,6 @@ fun CanvasScreen() {
         }
         backgroundBitmap = result?.bitmap
         photoBounds = result?.photoBounds ?: emptyList()
-        thumbnails = result?.thumbnails ?: emptyList()
     }
 
     // Request permission on first launch, then show picker
@@ -245,9 +240,6 @@ fun CanvasScreen() {
                 bitmap = backgroundBitmap!!,
                 viewportRect = viewportRect,
                 isZoomed = isZoomed,
-                editMode = editMode,
-                thumbnails = thumbnails,
-                activePhotoIndex = activePhotoIndex,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -276,9 +268,6 @@ private fun CollageThumbBar(
     bitmap: Bitmap,
     viewportRect: RectF?,
     isZoomed: Boolean,
-    editMode: Boolean,
-    thumbnails: List<Bitmap>,
-    activePhotoIndex: Int,
     modifier: Modifier = Modifier
 ) {
     Box(
@@ -287,72 +276,44 @@ private fun CollageThumbBar(
             .background(Color(0x99000000)),
         contentAlignment = Alignment.Center
     ) {
-        if (!editMode) {
-            // Mode 1: Normal — stitched bitmap with viewport indicator
-            val indicatorAlpha by animateFloatAsState(
-                targetValue = if (isZoomed) 1f else 0f,
-                label = "viewportAlpha"
-            )
-            Image(
-                bitmap = bitmap.asImageBitmap(),
-                contentDescription = "Collage preview",
-                contentScale = ContentScale.FillHeight,
-                modifier = Modifier
-                    .height(56.dp)
-                    .horizontalScroll(rememberScrollState())
-                    .drawWithContent {
-                        drawContent()
-                        if (indicatorAlpha > 0f && viewportRect != null) {
-                            val left = viewportRect.left * size.width
-                            val top = viewportRect.top * size.height
-                            val right = viewportRect.right * size.width
-                            val bottom = viewportRect.bottom * size.height
-                            drawRect(
-                                color = Color.White.copy(alpha = 0.25f * indicatorAlpha),
-                                topLeft = Offset(left, top),
-                                size = Size(right - left, bottom - top)
-                            )
-                            drawRect(
-                                color = Color.White.copy(alpha = 0.85f * indicatorAlpha),
-                                topLeft = Offset(left, top),
-                                size = Size(right - left, bottom - top),
-                                style = Stroke(width = 2.dp.toPx())
-                            )
-                        }
+        val indicatorAlpha by animateFloatAsState(
+            targetValue = if (isZoomed) 1f else 0f,
+            label = "viewportAlpha"
+        )
+        Image(
+            bitmap = bitmap.asImageBitmap(),
+            contentDescription = "Collage preview",
+            contentScale = ContentScale.FillHeight,
+            modifier = Modifier
+                .height(56.dp)
+                .horizontalScroll(rememberScrollState())
+                .drawWithContent {
+                    drawContent()
+                    if (indicatorAlpha > 0f && viewportRect != null) {
+                        val left = viewportRect.left * size.width
+                        val top = viewportRect.top * size.height
+                        val right = viewportRect.right * size.width
+                        val bottom = viewportRect.bottom * size.height
+                        drawRect(
+                            color = Color.White.copy(alpha = 0.25f * indicatorAlpha),
+                            topLeft = Offset(left, top),
+                            size = Size(right - left, bottom - top)
+                        )
+                        drawRect(
+                            color = Color.White.copy(alpha = 0.85f * indicatorAlpha),
+                            topLeft = Offset(left, top),
+                            size = Size(right - left, bottom - top),
+                            style = Stroke(width = 2.dp.toPx())
+                        )
                     }
-            )
-        } else {
-            // Mode 2: Edit — individual thumbnails with active highlighted
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                modifier = Modifier
-                    .height(56.dp)
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 4.dp)
-            ) {
-                thumbnails.forEachIndexed { index, thumb ->
-                    val isActive = index == activePhotoIndex
-                    Image(
-                        bitmap = thumb.asImageBitmap(),
-                        contentDescription = "Photo ${index + 1}",
-                        contentScale = ContentScale.FillHeight,
-                        modifier = Modifier
-                            .height(52.dp)
-                            .then(
-                                if (isActive) Modifier.border(2.dp, Color(0xFF4FC3F7))
-                                else Modifier
-                            )
-                    )
                 }
-            }
-        }
+        )
     }
 }
 
 data class CollageResult(
     val bitmap: Bitmap,
-    val photoBounds: List<RectF>,
-    val thumbnails: List<Bitmap>
+    val photoBounds: List<RectF>
 )
 
 private fun stitchCollage(context: android.content.Context, uris: List<Uri>): CollageResult? {
@@ -395,8 +356,6 @@ private fun stitchCollage(context: android.content.Context, uris: List<Uri>): Co
     // Create result bitmap and draw each photo side-by-side
     val result = Bitmap.createBitmap(totalWidth, uniformHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(result)
-    val thumbHeight = 112
-    val thumbnails = mutableListOf<Bitmap>()
     var x = 0f
     bitmaps.forEachIndexed { i, bmp ->
         val scale = uniformHeight.toFloat() / bmp.height
@@ -406,8 +365,6 @@ private fun stitchCollage(context: android.content.Context, uris: List<Uri>): Co
         }
         canvas.drawBitmap(bmp, matrix, null)
         x += scaledWidths[i]
-        val thumbWidth = (bmp.width.toFloat() / bmp.height * thumbHeight).toInt().coerceAtLeast(1)
-        thumbnails.add(Bitmap.createScaledBitmap(bmp, thumbWidth, thumbHeight, true))
         bmp.recycle()
     }
 
@@ -418,7 +375,7 @@ private fun stitchCollage(context: android.content.Context, uris: List<Uri>): Co
         bx += w
     }
 
-    return CollageResult(result, bounds, thumbnails)
+    return CollageResult(result, bounds)
 }
 
 private fun calculateInSampleSize(actualHeight: Int, targetHeight: Int): Int {
