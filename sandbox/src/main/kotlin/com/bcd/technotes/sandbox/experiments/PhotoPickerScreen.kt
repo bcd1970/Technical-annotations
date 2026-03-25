@@ -73,6 +73,7 @@ import coil3.request.ImageRequest
 import coil3.size.Precision
 import coil3.size.Size
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.view.doOnLayout
 import com.bcd.technotes.sandbox.util.updateDoubleTapScale
 import com.ortiz.touchview.TouchImageView
 import kotlinx.coroutines.Dispatchers
@@ -669,7 +670,9 @@ private fun PhotoPreview(
                     } catch (_: Exception) {
                         view.setImageURI(photo.uri)
                     }
-                    view.post { view.updateDoubleTapScale() }
+                    // doOnLayout fires after TouchImageView processes the new bitmap's layout,
+                    // guaranteed even for newly created views that don't have dimensions yet
+                    view.doOnLayout { view.updateDoubleTapScale() }
                 },
                 modifier = Modifier.fillMaxSize()
             )

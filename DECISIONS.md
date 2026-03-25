@@ -227,3 +227,15 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | Full /port workflow with side-by-side verification | SUCCESS | Zero behavioral differences confirmed. All composables, animations, query functions identical between sandbox and app |
+
+### Double-Tap Zoom Fix (Preview Pager) — 2026-03-25
+
+**Goal:** Double-tap should zoom exactly to fill (image edges reach screen edges) on every photo in the preview pager, not just the first 2-3
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Cap doubleTapScale at 2.5f | FAILED | Wrong fix — masked the bug. Fill IS the correct zoom for all aspect ratios |
+| 2 | Calculate doubleTapScale immediately from bitmap dimensions + double-post fallback | FAILED | Works for first 2-3 preloaded pages, but beyond that view.width/height is 0 for newly created views — calculation silently skipped |
+| 3 | **doOnLayout callback from androidx.core.view** | **SUCCESS** | Fires after view has dimensions AND after TouchImageView processes the new bitmap's layout. Guaranteed for both preloaded and newly created views |
+
+**Root cause:** HorizontalPager preloads ~2-3 pages. Those views are already laid out so view.width/height are valid. Beyond that, new AndroidView instances are created on demand — view dimensions are 0 when the `update` block runs. `post{}` and even double-post fire before the view's first layout pass completes. `doOnLayout` correctly waits.
