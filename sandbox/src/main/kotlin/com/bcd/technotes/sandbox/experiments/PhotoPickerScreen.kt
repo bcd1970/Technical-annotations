@@ -57,9 +57,8 @@ import coil3.compose.AsyncImage
 import coil3.request.ImageRequest
 import coil3.size.Precision
 import coil3.size.Size
-import me.saket.telephoto.zoomable.coil3.ZoomableAsyncImage
-import me.saket.telephoto.zoomable.rememberZoomableImageState
-import me.saket.telephoto.zoomable.rememberZoomableState
+import androidx.compose.ui.viewinterop.AndroidView
+import com.ortiz.touchview.TouchImageView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -372,6 +371,7 @@ private fun PhotoPreview(
         initialPage = startIndex,
         pageCount = { photos.size }
     )
+    var isZoomed by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -380,33 +380,36 @@ private fun PhotoPreview(
     ) {
         HorizontalPager(
             state = pagerState,
+            userScrollEnabled = !isZoomed,
             modifier = Modifier.fillMaxSize()
         ) { page ->
             val photo = photos[page]
-            val zoomableState = rememberZoomableState()
 
-            // Reset zoom when this page is not the settled page
-            if (pagerState.settledPage != page) {
-                LaunchedEffect(Unit) {
-                    zoomableState.resetZoom()
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .combinedClickable(
-                        onClick = {},
-                        onLongClick = { onPhotoLongPress(photo.uri) }
-                    )
-            ) {
-                ZoomableAsyncImage(
-                    model = photo.uri,
-                    contentDescription = null,
-                    state = rememberZoomableImageState(zoomableState),
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
+            AndroidView(
+                factory = { ctx ->
+                    TouchImageView(ctx).apply {
+                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                        maxZoom = 10f
+                        minZoom = 1f
+                        setBackgroundColor(android.graphics.Color.BLACK)
+                        setOnLongClickListener {
+                            onPhotoLongPress(photo.uri)
+                            true
+                        }
+                        setOnTouchImageViewListener(object : com.ortiz.touchview.OnTouchImageViewListener {
+                            override fun onMove() {
+                                isZoomed = this@apply.isZoomed
+                            }
+                        })
+                    }
+                },
+                update = { view ->
+                    view.resetZoom()
+                    view.setImageURI(photo.uri)
+                    isZoomed = false
+                },
+                modifier = Modifier.fillMaxSize()
+            )
         }
 
         Text(
