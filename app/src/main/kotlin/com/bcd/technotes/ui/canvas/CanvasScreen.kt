@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Matrix
+import android.graphics.RectF
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -42,10 +43,16 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.core.content.ContextCompat
 import com.bcd.technotes.ui.photo.PhotoPickerScreen
 import com.bcd.technotes.ui.util.updateDoubleTapScale
+import com.ortiz.touchview.OnTouchImageViewListener
 import com.ortiz.touchview.TouchImageView
 
 @Composable
@@ -56,6 +63,8 @@ fun CanvasScreen() {
     var selectedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
     var showPicker by remember { mutableStateOf(false) }
+    var viewportRect by remember { mutableStateOf<RectF?>(null) }
+    var isZoomed by remember { mutableStateOf(false) }
     var hasPermission by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(
@@ -141,6 +150,12 @@ fun CanvasScreen() {
                             maxZoom = 10f
                             minZoom = 1f
                             post { updateDoubleTapScale() }
+                            setOnTouchImageViewListener(object : OnTouchImageViewListener {
+                                override fun onMove() {
+                                    isZoomed = this@apply.isZoomed
+                                    viewportRect = this@apply.zoomedRect
+                                }
+                            })
                         }
                     },
                     update = { view ->
@@ -164,6 +179,8 @@ fun CanvasScreen() {
         if (selectedUris.size >= 2 && backgroundBitmap != null) {
             CollageThumbBar(
                 bitmap = backgroundBitmap!!,
+                viewportRect = viewportRect,
+                isZoomed = isZoomed,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -189,8 +206,15 @@ fun CanvasScreen() {
 @Composable
 private fun CollageThumbBar(
     bitmap: Bitmap,
+    viewportRect: RectF?,
+    isZoomed: Boolean,
     modifier: Modifier = Modifier
 ) {
+    val indicatorAlpha by animateFloatAsState(
+        targetValue = if (isZoomed) 1f else 0f,
+        label = "viewportAlpha"
+    )
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -203,6 +227,26 @@ private fun CollageThumbBar(
             modifier = Modifier
                 .height(56.dp)
                 .horizontalScroll(rememberScrollState())
+                .drawWithContent {
+                    drawContent()
+                    if (indicatorAlpha > 0f && viewportRect != null) {
+                        val left = viewportRect.left * size.width
+                        val top = viewportRect.top * size.height
+                        val right = viewportRect.right * size.width
+                        val bottom = viewportRect.bottom * size.height
+                        drawRect(
+                            color = Color.White.copy(alpha = 0.25f * indicatorAlpha),
+                            topLeft = Offset(left, top),
+                            size = Size(right - left, bottom - top)
+                        )
+                        drawRect(
+                            color = Color.White.copy(alpha = 0.85f * indicatorAlpha),
+                            topLeft = Offset(left, top),
+                            size = Size(right - left, bottom - top),
+                            style = Stroke(width = 2.dp.toPx())
+                        )
+                    }
+                }
         )
     }
 }

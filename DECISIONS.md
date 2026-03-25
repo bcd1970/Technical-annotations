@@ -271,3 +271,20 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | Port CollageThumbBar composable, imports, FAB padding logic from CanvasExperiment to CanvasScreen | SUCCESS | Side-by-side verified — all functional code identical. No compliance/security findings. Both apps build and install clean |
+
+### Viewport Indicator on Thumbnail Bar — 2026-03-25
+
+**Goal:** Show a rectangle on the collage thumbnail bar that matches the visible area when zoomed in, with fade animation
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Track viewport via TouchImageView.zoomedRect (normalized 0-1 RectF) + isZoomed via OnTouchImageViewListener.onMove | SUCCESS | zoomedRect maps directly to thumbnail dimensions — multiply by size.width/height for pixel coords |
+| 2 | drawWithContent overlay: white fill (25% alpha) + white stroke (85% alpha, 2dp) with animateFloatAsState fade | SUCCESS | Fades in when zoomed, fades out when fit. Tracks pan in real time |
+
+### Port Viewport Indicator to Main App — 2026-03-25
+
+**Goal:** Port viewport indicator rectangle from sandbox to main app
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Port viewportRect/isZoomed state, OnTouchImageViewListener, CollageThumbBar params + drawWithContent overlay | SUCCESS | Side-by-side verified — all functional code identical. No compliance/security findings. Both apps build and install clean |
