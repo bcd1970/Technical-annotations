@@ -614,8 +614,27 @@ private fun PhotoPreview(
                 },
                 update = { view ->
                     view.resetZoom()
-                    view.setImageURI(photo.uri)
                     isZoomed = false
+                    // Downsample to ~2x screen size for smooth pager swipes with large photos
+                    val dw = view.resources.displayMetrics.widthPixels
+                    val dh = view.resources.displayMetrics.heightPixels
+                    try {
+                        view.context.contentResolver.openInputStream(photo.uri)?.use { stream ->
+                            val opts = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                            android.graphics.BitmapFactory.decodeStream(stream, null, opts)
+                            var sampleSize = 1
+                            while (opts.outWidth / sampleSize > dw * 2 || opts.outHeight / sampleSize > dh * 2) {
+                                sampleSize *= 2
+                            }
+                            view.context.contentResolver.openInputStream(photo.uri)?.use { stream2 ->
+                                val decodeOpts = android.graphics.BitmapFactory.Options().apply { inSampleSize = sampleSize }
+                                val bitmap = android.graphics.BitmapFactory.decodeStream(stream2, null, decodeOpts)
+                                if (bitmap != null) view.setImageBitmap(bitmap)
+                            }
+                        }
+                    } catch (_: Exception) {
+                        view.setImageURI(photo.uri)
+                    }
                     view.post {
                         val d = view.drawable ?: return@post
                         val imgW = d.intrinsicWidth.toFloat()
