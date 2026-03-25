@@ -255,3 +255,19 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | Replace CollagePlaceholder with stitchCollage + calculateInSampleSize, add collage LaunchedEffect, update imports | SUCCESS | Side-by-side verified — all functional code identical. No compliance/security findings. Both apps build and install clean |
+
+### Collage Thumbnail Bar — 2026-03-25
+
+**Goal:** Add a thumbnail bar at the bottom of the canvas collage view showing the same collage layout (no padding between photos)
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Reuse existing `backgroundBitmap` (stitched collage) as a 56dp horizontally-scrollable strip at bottom of canvas | SUCCESS | No extra decoding needed — same bitmap rendered small with ContentScale.FillHeight. FAB shifts up when bar visible. Semi-transparent dark background for contrast |
+
+### Port Collage Thumbnail Bar to Main App — 2026-03-25
+
+**Goal:** Port CollageThumbBar from sandbox to main app
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Port CollageThumbBar composable, imports, FAB padding logic from CanvasExperiment to CanvasScreen | SUCCESS | Side-by-side verified — all functional code identical. No compliance/security findings. Both apps build and install clean |
