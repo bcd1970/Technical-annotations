@@ -65,6 +65,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.ColorPainter
 import androidx.compose.ui.layout.ContentScale
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -100,6 +103,7 @@ fun PhotoPickerScreen(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
     var currentView by remember { mutableStateOf(PickerView.RECENT) }
     var previousView by remember { mutableStateOf(PickerView.RECENT) }
     var albums by remember { mutableStateOf<List<Album>>(emptyList()) }
@@ -170,7 +174,7 @@ fun PhotoPickerScreen(
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = { navigateBack() }) {
+                        IconButton(onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); navigateBack() }) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back"
@@ -250,7 +254,7 @@ fun PhotoPickerScreen(
                 ) {
                     if (selectedPhotoIds.isNotEmpty()) {
                         FloatingActionButton(
-                            onClick = { onPhotosConfirmed(selectedPhotoList.map { it.uri }) },
+                            onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onPhotosConfirmed(selectedPhotoList.map { it.uri }) },
                             containerColor = MaterialTheme.colorScheme.tertiary
                         ) {
                             Box(contentAlignment = Alignment.Center) {
@@ -277,7 +281,7 @@ fun PhotoPickerScreen(
                     when (currentView) {
                         PickerView.RECENT -> {
                             FloatingActionButton(
-                                onClick = { currentView = PickerView.ALBUMS },
+                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); currentView = PickerView.ALBUMS },
                                 containerColor = MaterialTheme.colorScheme.primary
                             ) {
                                 Icon(Icons.Default.Folder, contentDescription = "Albums")
@@ -285,7 +289,7 @@ fun PhotoPickerScreen(
                         }
                         PickerView.ALBUMS -> {
                             FloatingActionButton(
-                                onClick = { currentView = PickerView.RECENT },
+                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); currentView = PickerView.RECENT },
                                 containerColor = MaterialTheme.colorScheme.primary
                             ) {
                                 Icon(Icons.Default.GridView, contentDescription = "Recent")
@@ -293,7 +297,7 @@ fun PhotoPickerScreen(
                         }
                         PickerView.ALBUM_PHOTOS -> {
                             FloatingActionButton(
-                                onClick = { navigateBack() },
+                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); navigateBack() },
                                 containerColor = MaterialTheme.colorScheme.primary
                             ) {
                                 Icon(Icons.Default.Folder, contentDescription = "Albums")
@@ -301,7 +305,7 @@ fun PhotoPickerScreen(
                         }
                         PickerView.PHOTO_PREVIEW -> {
                             FloatingActionButton(
-                                onClick = { currentView = previousView },
+                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); currentView = previousView },
                                 containerColor = MaterialTheme.colorScheme.primary
                             ) {
                                 Icon(Icons.Default.GridView, contentDescription = "Back to grid")
@@ -348,12 +352,13 @@ private fun AlbumGrid(
 @Composable
 private fun AlbumItem(album: Album, onClick: () -> Unit) {
     val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
+    val haptic = LocalHapticFeedback.current
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .combinedClickable(onClick = onClick)
+            .combinedClickable(onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onClick() })
     ) {
         AsyncImage(
             model = ImageRequest.Builder(LocalContext.current)
@@ -396,6 +401,7 @@ private fun PhotoGrid(
     modifier: Modifier = Modifier
 ) {
     val placeholderColor = MaterialTheme.colorScheme.surfaceVariant
+    val haptic = LocalHapticFeedback.current
 
     LazyVerticalGrid(
         columns = GridCells.Fixed(3),
@@ -413,8 +419,11 @@ private fun PhotoGrid(
                     .fillMaxWidth()
                     .aspectRatio(1f)
                     .combinedClickable(
-                        onClick = { onPhotoTap(photo) },
-                        onLongClick = { onPhotoLongPress(index) }
+                        onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onPhotoTap(photo) },
+                        onLongClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onPhotoLongPress(index)
+                        }
                     )
             ) {
                 AsyncImage(
@@ -458,6 +467,7 @@ private fun SelectedPhotosStrip(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val haptic = LocalHapticFeedback.current
     val selectedIds = remember(selectedPhotos) { selectedPhotos.map { it.id }.toSet() }
 
     // Keep removed photos alive for exit animation
@@ -579,7 +589,7 @@ private fun SelectedPhotosStrip(
                     )
                     if (!isExiting) {
                         SmallFloatingActionButton(
-                            onClick = { onRemovePhoto(photo.id) },
+                            onClick = { haptic.performHapticFeedback(HapticFeedbackType.LongPress); onRemovePhoto(photo.id) },
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .offset(x = 4.dp, y = (-4).dp)
@@ -635,8 +645,9 @@ private fun PhotoPreview(
                         maxZoom = 10f
                         minZoom = 1f
                         setBackgroundColor(android.graphics.Color.BLACK)
-                        setOnClickListener { onPhotoTap(photo) }
-                        setOnLongClickListener {
+                        setOnClickListener { view -> view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP); onPhotoTap(photo) }
+                        setOnLongClickListener { view ->
+                            view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                             onPhotoLongPress(photo)
                             true
                         }

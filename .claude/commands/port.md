@@ -64,15 +64,14 @@ Both must build successfully. If build fails, fix and retry.
 ## Step 7: Install both on device
 
 ```bash
-ADB="$LOCALAPPDATA/Android/Sdk/platform-tools/adb.exe"
-$ADB install -r sandbox/build/outputs/apk/debug/sandbox-debug.apk
-$ADB install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r sandbox/build/outputs/apk/debug/sandbox-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
 Launch both for the user to verify:
 ```bash
-$ADB shell am start -n com.bcd.technotes.sandbox/.SandboxActivity
-$ADB shell am start -n com.bcd.technotes/.MainActivity
+adb shell am start -n com.bcd.technotes.sandbox/.SandboxActivity
+adb shell am start -n com.bcd.technotes/.MainActivity
 ```
 
 ## Step 8: Update DECISIONS.md

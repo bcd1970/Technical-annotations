@@ -288,3 +288,29 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | Port viewportRect/isZoomed state, OnTouchImageViewListener, CollageThumbBar params + drawWithContent overlay | SUCCESS | Side-by-side verified — all functional code identical. No compliance/security findings. Both apps build and install clean |
+
+### Collage Edit Mode — Long-Press Photo Selection — 2026-03-25
+
+**Goal:** Long-press on collage to enter edit mode that highlights individual photos with borders, active photo highlighted differently
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Subclass TouchImageView as EditableTouchImageView with onDraw overlay vs Compose Canvas overlay | SUCCESS | Subclass approach uses library's protected `transformCoordBitmapToTouch()` for coordinate mapping — borders follow zoom/pan perfectly at all levels. Compose overlay would require complex letterbox-aware coordinate math |
+| 2 | Return photo bounds from stitchCollage() via CollageResult data class | SUCCESS | Pixel-space RectF bounds built during existing draw loop, no extra computation |
+| 3 | OnTouchCoordinatesListener for bitmap-space touch tracking + OnLongClickListener toggle | SUCCESS | Caches last bitmap point on every touch move, long-press reads it to determine which photo was pressed. Interface requires anonymous object (not SAM-convertible) |
+| 4 | Tap to switch active photo + BackHandler to exit edit mode | SUCCESS | setOnClickListener switches active photo index, BackHandler resets edit state |
+
+### Thumbnail Bar Edit Mode + Drag-to-Reorder — 2026-03-25
+
+**Goal:** In edit mode, show individual photo thumbnails with padding (no viewport indicator). Long-press thumbnail to enter reorder mode with drag-to-reorder that re-stitches the collage on release.
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Extend CollageResult with per-photo thumbnails generated during stitching | SUCCESS | Scaled-down copies (112px height) created from source bitmaps before recycling — avoids re-cropping from stitched bitmap |
+| 2 | Three-mode CollageThumbBar: normal (stitched + viewport), edit (Row of individual thumbs), reorder (draggable Row) | SUCCESS | Modes are mutually exclusive branches in the composable. Edit mode hides viewport indicator and shows individual thumbnails with 4dp spacing |
+| 3 | Thumbnail drag-to-reorder with Compose detectDragGestures | FAILED | Gesture conflicts, thumbnail doesn't follow finger, haptic not triggering — Compose drag gestures unreliable in Row context |
+| 4 | Arrow buttons to move active photo left/right | SUCCESS | Simple, reliable — but replaced by canvas drag for better UX |
+| 5 | Canvas drag-to-reorder: dispatchTouchEvent override with horizontal drag detection | SUCCESS | Active photo follows finger 1:1 across screen. Only the passed-over photo swaps to fill the gap. Swap triggers when active photo center crosses neighbor center. Haptic tick on each swap |
+| 6 | Gesture disambiguation: dx > touchSlop && dx > dy*1.5 → reorder, else pass to TouchImageView | SUCCESS | Clean separation: tap (select), horizontal drag (reorder), pinch (zoom). Reorder disabled when zoomed. Multi-touch cancels reorder |
+| 7 | Auto-select photo on drag start via transformCoordTouchToBitmap | SUCCESS | No need to tap first — drag directly selects and reorders in one gesture |
+| 8 | Long-press always selects (no toggle off) | SUCCESS | Long-press enters edit mode or switches active photo. Back button exits edit mode |
