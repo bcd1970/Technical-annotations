@@ -314,3 +314,11 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | 6 | Gesture disambiguation: dx > touchSlop && dx > dy*1.5 → reorder, else pass to TouchImageView | SUCCESS | Clean separation: tap (select), horizontal drag (reorder), pinch (zoom). Reorder disabled when zoomed. Multi-touch cancels reorder |
 | 7 | Auto-select photo on drag start via transformCoordTouchToBitmap | SUCCESS | No need to tap first — drag directly selects and reorders in one gesture |
 | 8 | Long-press always selects (no toggle off) | SUCCESS | Long-press enters edit mode or switches active photo. Back button exits edit mode |
+
+### Port Edit Mode + Drag Reorder + Haptic Feedback to Main App — 2026-03-25
+
+**Goal:** Port all edit mode, drag-to-reorder, and haptic feedback features from sandbox to main app
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Create EditableTouchImageView in app/ui/util, port CanvasScreen with full edit mode + reorder, add haptic to all interactions in PhotoPickerScreen | SUCCESS | Side-by-side verified — all functional code identical (package names adapted). New file created: EditableTouchImageView.kt. No compliance/security findings. Both apps build and install clean |

@@ -50,14 +50,25 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.core.content.ContextCompat
-import com.bcd.technotes.ui.photo.PhotoPickerScreen
-import com.bcd.technotes.ui.util.updateDoubleTapScale
+import android.graphics.PointF
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.runtime.mutableIntStateOf
 import com.ortiz.touchview.OnTouchImageViewListener
-import com.ortiz.touchview.TouchImageView
+import com.ortiz.touchview.OnTouchCoordinatesListener
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import com.bcd.technotes.ui.photo.PhotoPickerScreen
+import com.bcd.technotes.ui.util.EditableTouchImageView
+import com.bcd.technotes.ui.util.updateDoubleTapScale
 
 @Composable
 fun CanvasScreen() {
     val context = LocalContext.current
+    val haptic = LocalHapticFeedback.current
 
     var backgroundBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var selectedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
@@ -100,12 +111,26 @@ fun CanvasScreen() {
         }
     }
 
+    var photoBounds by remember { mutableStateOf<List<RectF>>(emptyList()) }
+    var thumbnails by remember { mutableStateOf<List<Bitmap>>(emptyList()) }
+    var editMode by remember { mutableStateOf(false) }
+    var activePhotoIndex by remember { mutableIntStateOf(-1) }
+    var lastBitmapPoint by remember { mutableStateOf(PointF(0f, 0f)) }
+
+    BackHandler(enabled = editMode) {
+        editMode = false
+        activePhotoIndex = -1
+    }
+
     // Stitch collage: decode all photos, scale to uniform height, draw side-by-side
     LaunchedEffect(selectedUris) {
         if (selectedUris.size < 2) return@LaunchedEffect
-        backgroundBitmap = withContext(Dispatchers.IO) {
+        val result = withContext(Dispatchers.IO) {
             stitchCollage(context, selectedUris)
         }
+        backgroundBitmap = result?.bitmap
+        photoBounds = result?.photoBounds ?: emptyList()
+        thumbnails = result?.thumbnails ?: emptyList()
     }
 
     // Request permission on first launch, then show picker
@@ -121,6 +146,8 @@ fun CanvasScreen() {
         PhotoPickerScreen(
             onPhotosConfirmed = { uris ->
                 showPicker = false
+                editMode = false
+                activePhotoIndex = -1
                 if (uris.size == 1) {
                     pendingUri = uris.first()
                     selectedUris = emptyList()
@@ -144,11 +171,12 @@ fun CanvasScreen() {
                 val bitmap = backgroundBitmap!!
                 AndroidView(
                     factory = { ctx ->
-                        TouchImageView(ctx).apply {
+                        EditableTouchImageView(ctx).apply {
                             scaleType = ImageView.ScaleType.FIT_CENTER
                             setImageBitmap(bitmap)
                             maxZoom = 10f
                             minZoom = 1f
+                            this.photoBounds = photoBounds
                             post { updateDoubleTapScale() }
                             setOnTouchImageViewListener(object : OnTouchImageViewListener {
                                 override fun onMove() {
@@ -156,10 +184,46 @@ fun CanvasScreen() {
                                     viewportRect = this@apply.zoomedRect
                                 }
                             })
+                            setOnTouchCoordinatesListener(object : OnTouchCoordinatesListener {
+                                override fun onTouchCoordinate(view: android.view.View, event: android.view.MotionEvent, bitmapPoint: PointF) {
+                                    lastBitmapPoint = bitmapPoint
+                                }
+                            })
+                            setOnLongClickListener { view ->
+                                view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+                                if (this.photoBounds.isNotEmpty()) {
+                                    val index = photoIndexAt(lastBitmapPoint.x)
+                                    if (index >= 0) {
+                                        editMode = true
+                                        activePhotoIndex = index
+                                        this.editMode = true
+                                        this.activePhotoIndex = index
+                                    }
+                                }
+                                true
+                            }
+                            setOnClickListener { view ->
+                                view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                                if (editMode && this.photoBounds.isNotEmpty()) {
+                                    val index = photoIndexAt(lastBitmapPoint.x)
+                                    if (index >= 0) {
+                                        activePhotoIndex = index
+                                        this.activePhotoIndex = index
+                                    }
+                                }
+                            }
+                            onReorderComplete = { newOrder ->
+                                val viewActiveIndex = this.activePhotoIndex
+                                selectedUris = newOrder.map { selectedUris[it] }
+                                activePhotoIndex = newOrder.indexOf(viewActiveIndex)
+                            }
                         }
                     },
                     update = { view ->
                         view.setImageBitmap(bitmap)
+                        view.photoBounds = photoBounds
+                        view.editMode = editMode
+                        view.activePhotoIndex = activePhotoIndex
                         view.post { view.updateDoubleTapScale() }
                     },
                     modifier = Modifier.fillMaxSize()
@@ -181,6 +245,9 @@ fun CanvasScreen() {
                 bitmap = backgroundBitmap!!,
                 viewportRect = viewportRect,
                 isZoomed = isZoomed,
+                editMode = editMode,
+                thumbnails = thumbnails,
+                activePhotoIndex = activePhotoIndex,
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
@@ -189,6 +256,7 @@ fun CanvasScreen() {
 
         FloatingActionButton(
             onClick = {
+                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                 val hasPermission = ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED
                 if (hasPermission) showPicker = true else permissionLauncher.launch(permission)
             },
@@ -208,50 +276,86 @@ private fun CollageThumbBar(
     bitmap: Bitmap,
     viewportRect: RectF?,
     isZoomed: Boolean,
+    editMode: Boolean,
+    thumbnails: List<Bitmap>,
+    activePhotoIndex: Int,
     modifier: Modifier = Modifier
 ) {
-    val indicatorAlpha by animateFloatAsState(
-        targetValue = if (isZoomed) 1f else 0f,
-        label = "viewportAlpha"
-    )
-
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(Color(0x99000000))
+            .background(Color(0x99000000)),
+        contentAlignment = Alignment.Center
     ) {
-        Image(
-            bitmap = bitmap.asImageBitmap(),
-            contentDescription = "Collage preview",
-            contentScale = ContentScale.FillHeight,
-            modifier = Modifier
-                .height(56.dp)
-                .horizontalScroll(rememberScrollState())
-                .drawWithContent {
-                    drawContent()
-                    if (indicatorAlpha > 0f && viewportRect != null) {
-                        val left = viewportRect.left * size.width
-                        val top = viewportRect.top * size.height
-                        val right = viewportRect.right * size.width
-                        val bottom = viewportRect.bottom * size.height
-                        drawRect(
-                            color = Color.White.copy(alpha = 0.25f * indicatorAlpha),
-                            topLeft = Offset(left, top),
-                            size = Size(right - left, bottom - top)
-                        )
-                        drawRect(
-                            color = Color.White.copy(alpha = 0.85f * indicatorAlpha),
-                            topLeft = Offset(left, top),
-                            size = Size(right - left, bottom - top),
-                            style = Stroke(width = 2.dp.toPx())
-                        )
+        if (!editMode) {
+            // Mode 1: Normal — stitched bitmap with viewport indicator
+            val indicatorAlpha by animateFloatAsState(
+                targetValue = if (isZoomed) 1f else 0f,
+                label = "viewportAlpha"
+            )
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = "Collage preview",
+                contentScale = ContentScale.FillHeight,
+                modifier = Modifier
+                    .height(56.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .drawWithContent {
+                        drawContent()
+                        if (indicatorAlpha > 0f && viewportRect != null) {
+                            val left = viewportRect.left * size.width
+                            val top = viewportRect.top * size.height
+                            val right = viewportRect.right * size.width
+                            val bottom = viewportRect.bottom * size.height
+                            drawRect(
+                                color = Color.White.copy(alpha = 0.25f * indicatorAlpha),
+                                topLeft = Offset(left, top),
+                                size = Size(right - left, bottom - top)
+                            )
+                            drawRect(
+                                color = Color.White.copy(alpha = 0.85f * indicatorAlpha),
+                                topLeft = Offset(left, top),
+                                size = Size(right - left, bottom - top),
+                                style = Stroke(width = 2.dp.toPx())
+                            )
+                        }
                     }
+            )
+        } else {
+            // Mode 2: Edit — individual thumbnails with active highlighted
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                modifier = Modifier
+                    .height(56.dp)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 4.dp)
+            ) {
+                thumbnails.forEachIndexed { index, thumb ->
+                    val isActive = index == activePhotoIndex
+                    Image(
+                        bitmap = thumb.asImageBitmap(),
+                        contentDescription = "Photo ${index + 1}",
+                        contentScale = ContentScale.FillHeight,
+                        modifier = Modifier
+                            .height(52.dp)
+                            .then(
+                                if (isActive) Modifier.border(2.dp, Color(0xFF4FC3F7))
+                                else Modifier
+                            )
+                    )
                 }
-        )
+            }
+        }
     }
 }
 
-private fun stitchCollage(context: android.content.Context, uris: List<Uri>): Bitmap? {
+data class CollageResult(
+    val bitmap: Bitmap,
+    val photoBounds: List<RectF>,
+    val thumbnails: List<Bitmap>
+)
+
+private fun stitchCollage(context: android.content.Context, uris: List<Uri>): CollageResult? {
     // Decode all bitmaps with downsampling to ~2x screen height
     val displayHeight = context.resources.displayMetrics.heightPixels
     val targetMaxHeight = displayHeight * 2
@@ -291,6 +395,8 @@ private fun stitchCollage(context: android.content.Context, uris: List<Uri>): Bi
     // Create result bitmap and draw each photo side-by-side
     val result = Bitmap.createBitmap(totalWidth, uniformHeight, Bitmap.Config.ARGB_8888)
     val canvas = Canvas(result)
+    val thumbHeight = 112
+    val thumbnails = mutableListOf<Bitmap>()
     var x = 0f
     bitmaps.forEachIndexed { i, bmp ->
         val scale = uniformHeight.toFloat() / bmp.height
@@ -300,10 +406,19 @@ private fun stitchCollage(context: android.content.Context, uris: List<Uri>): Bi
         }
         canvas.drawBitmap(bmp, matrix, null)
         x += scaledWidths[i]
+        val thumbWidth = (bmp.width.toFloat() / bmp.height * thumbHeight).toInt().coerceAtLeast(1)
+        thumbnails.add(Bitmap.createScaledBitmap(bmp, thumbWidth, thumbHeight, true))
         bmp.recycle()
     }
 
-    return result
+    val bounds = mutableListOf<RectF>()
+    var bx = 0f
+    scaledWidths.forEach { w ->
+        bounds.add(RectF(bx, 0f, bx + w, uniformHeight.toFloat()))
+        bx += w
+    }
+
+    return CollageResult(result, bounds, thumbnails)
 }
 
 private fun calculateInSampleSize(actualHeight: Int, targetHeight: Int): Int {
