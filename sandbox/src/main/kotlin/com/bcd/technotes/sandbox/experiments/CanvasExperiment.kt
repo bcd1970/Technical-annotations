@@ -4,6 +4,8 @@ import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.os.Build
 import android.widget.ImageView
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -36,6 +38,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import com.bcd.technotes.sandbox.util.updateDoubleTapScale
 import com.ortiz.touchview.TouchImageView
 
 @Composable
@@ -44,6 +47,7 @@ fun CanvasExperiment() {
 
     var backgroundBitmap by remember { mutableStateOf<android.graphics.Bitmap?>(null) }
     var selectedUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
+    var pendingUri by remember { mutableStateOf<Uri?>(null) }
     var showPicker by remember { mutableStateOf(false) }
     var hasPermission by remember {
         mutableStateOf(
@@ -68,6 +72,18 @@ fun CanvasExperiment() {
         if (granted) showPicker = true
     }
 
+    // Decode bitmap off main thread
+    LaunchedEffect(pendingUri) {
+        pendingUri?.let { uri ->
+            backgroundBitmap = withContext(Dispatchers.IO) {
+                context.contentResolver.openInputStream(uri)?.use { stream ->
+                    BitmapFactory.decodeStream(stream)
+                }
+            }
+            pendingUri = null
+        }
+    }
+
     // Request permission on first launch, then show picker
     LaunchedEffect(hasPermission) {
         if (hasPermission) {
@@ -82,9 +98,7 @@ fun CanvasExperiment() {
             onPhotosConfirmed = { uris ->
                 showPicker = false
                 if (uris.size == 1) {
-                    context.contentResolver.openInputStream(uris.first())?.use { stream ->
-                        backgroundBitmap = BitmapFactory.decodeStream(stream)
-                    }
+                    pendingUri = uris.first()
                     selectedUris = emptyList()
                 } else {
                     backgroundBitmap = null
@@ -114,30 +128,12 @@ fun CanvasExperiment() {
                             setImageBitmap(bitmap)
                             maxZoom = 10f
                             minZoom = 1f
-                            post {
-                                val d = drawable ?: return@post
-                                val imgW = d.intrinsicWidth.toFloat()
-                                val imgH = d.intrinsicHeight.toFloat()
-                                val vW = width.toFloat()
-                                val vH = height.toFloat()
-                                if (imgW > 0 && imgH > 0 && vW > 0 && vH > 0) {
-                                    doubleTapScale = maxOf(vW / imgW, vH / imgH) / minOf(vW / imgW, vH / imgH)
-                                }
-                            }
+                            post { updateDoubleTapScale() }
                         }
                     },
                     update = { view ->
                         view.setImageBitmap(bitmap)
-                        view.post {
-                            val d = view.drawable ?: return@post
-                            val imgW = d.intrinsicWidth.toFloat()
-                            val imgH = d.intrinsicHeight.toFloat()
-                            val vW = view.width.toFloat()
-                            val vH = view.height.toFloat()
-                            if (imgW > 0 && imgH > 0 && vW > 0 && vH > 0) {
-                                view.doubleTapScale = maxOf(vW / imgW, vH / imgH) / minOf(vW / imgW, vH / imgH)
-                            }
-                        }
+                        view.post { view.updateDoubleTapScale() }
                     },
                     modifier = Modifier.fillMaxSize()
                 )

@@ -73,6 +73,7 @@ import coil3.request.ImageRequest
 import coil3.size.Precision
 import coil3.size.Size
 import androidx.compose.ui.viewinterop.AndroidView
+import com.bcd.technotes.ui.util.updateDoubleTapScale
 import com.ortiz.touchview.TouchImageView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -114,6 +115,19 @@ fun PhotoPickerScreen(
         selectedPhotoIds.mapNotNull { selectedPhotoCache[it] }
     }
 
+    fun navigateBack() {
+        when (currentView) {
+            PickerView.RECENT -> onDismiss()
+            PickerView.ALBUMS -> currentView = PickerView.RECENT
+            PickerView.ALBUM_PHOTOS -> {
+                selectedAlbum = null
+                albumPhotos = emptyList()
+                currentView = PickerView.ALBUMS
+            }
+            PickerView.PHOTO_PREVIEW -> currentView = previousView
+        }
+    }
+
     fun toggleSelection(photo: Photo) {
         selectedPhotoIds = if (selectedPhotoIds.contains(photo.id)) {
             selectedPhotoCache.remove(photo.id)
@@ -134,18 +148,7 @@ fun PhotoPickerScreen(
         }
     }
 
-    BackHandler {
-        when (currentView) {
-            PickerView.RECENT -> onDismiss()
-            PickerView.ALBUMS -> currentView = PickerView.RECENT
-            PickerView.ALBUM_PHOTOS -> {
-                selectedAlbum = null
-                albumPhotos = emptyList()
-                currentView = PickerView.ALBUMS
-            }
-            PickerView.PHOTO_PREVIEW -> currentView = previousView
-        }
-    }
+    BackHandler { navigateBack() }
 
     val title = when (currentView) {
         PickerView.RECENT -> if (selectedPhotoIds.isNotEmpty()) "${selectedPhotoIds.size} selected" else "Recent"
@@ -166,18 +169,7 @@ fun PhotoPickerScreen(
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = {
-                            when (currentView) {
-                                PickerView.RECENT -> onDismiss()
-                                PickerView.ALBUMS -> currentView = PickerView.RECENT
-                                PickerView.ALBUM_PHOTOS -> {
-                                    selectedAlbum = null
-                                    albumPhotos = emptyList()
-                                    currentView = PickerView.ALBUMS
-                                }
-                                PickerView.PHOTO_PREVIEW -> currentView = previousView
-                            }
-                        }) {
+                        IconButton(onClick = { navigateBack() }) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back"
@@ -300,11 +292,7 @@ fun PhotoPickerScreen(
                         }
                         PickerView.ALBUM_PHOTOS -> {
                             FloatingActionButton(
-                                onClick = {
-                                    selectedAlbum = null
-                                    albumPhotos = emptyList()
-                                    currentView = PickerView.ALBUMS
-                                },
+                                onClick = { navigateBack() },
                                 containerColor = MaterialTheme.colorScheme.primary
                             ) {
                                 Icon(Icons.Default.Folder, contentDescription = "Albums")
@@ -469,11 +457,33 @@ private fun SelectedPhotosStrip(
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
+    val selectedIds = remember(selectedPhotos) { selectedPhotos.map { it.id }.toSet() }
 
-    // Auto-scroll to end when new photos added — manual frame loop for smooth fling feel
+    // Keep removed photos alive for exit animation
+    val photoCache = remember { mutableMapOf<Long, Photo>() }
+    var exitingIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+
+    // Cache all photos we see so we can display them during exit
+    selectedPhotos.forEach { photoCache[it.id] = it }
+
+    // Detect removals by diffing against previous selected IDs
+    val prevIds = remember { mutableStateOf(selectedIds) }
+    if (prevIds.value != selectedIds) {
+        val removed = prevIds.value - selectedIds - exitingIds
+        if (removed.isNotEmpty()) {
+            exitingIds = exitingIds + removed
+        }
+        prevIds.value = selectedIds
+    }
+
+    // Display list: active photos + exiting photos (kept alive for animation)
+    val displayPhotos = remember(selectedPhotos, exitingIds) {
+        selectedPhotos + exitingIds.mapNotNull { photoCache[it] }
+    }
+
+    // Auto-scroll to end when new photos added
     LaunchedEffect(selectedPhotos.size) {
         if (selectedPhotos.isNotEmpty()) {
-            // Wait for layout so maxValue is updated
             kotlinx.coroutines.delay(50)
             val target = scrollState.maxValue
             val start = scrollState.value
@@ -486,7 +496,6 @@ private fun SelectedPhotosStrip(
                     val frameTime = withFrameNanos { it }
                     val elapsed = frameTime - startTime
                     t = (elapsed.toFloat() / durationNs).coerceIn(0f, 1f)
-                    // Decelerate easing (like fling slowing down)
                     val eased = 1f - (1f - t) * (1f - t)
                     scrollState.scrollTo(start + (distance * eased).toInt())
                 }
@@ -502,26 +511,49 @@ private fun SelectedPhotosStrip(
             .horizontalScroll(scrollState)
             .padding(horizontal = 8.dp, vertical = 8.dp)
     ) {
-        selectedPhotos.forEach { photo ->
+        displayPhotos.forEach { photo ->
+            val isExiting = exitingIds.contains(photo.id)
+
             key(photo.id) {
-                var progress by remember { mutableFloatStateOf(0f) }
-                LaunchedEffect(Unit) {
-                    val startTime = withFrameNanos { it }
-                    val durationNs = 300_000_000L // 300ms
-                    var done = false
-                    while (!done) {
-                        withFrameNanos { frameTime ->
-                            val elapsed = frameTime - startTime
-                            val t = (elapsed.toFloat() / durationNs).coerceIn(0f, 1f)
-                            // Overshoot interpolation for bounce
-                            progress = if (t < 1f) {
-                                val t2 = t - 1f
-                                t2 * t2 * (3f * t2 + 2f) + 1f
-                            } else 1f
-                            if (t >= 1f) done = true
+                var progress by remember { mutableFloatStateOf(if (isExiting) 1f else 0f) }
+
+                if (isExiting) {
+                    // Exit: shrink + slide down + fade out
+                    LaunchedEffect(Unit) {
+                        val startTime = withFrameNanos { it }
+                        val durationNs = 150_000_000L // 150ms
+                        var done = false
+                        while (!done) {
+                            withFrameNanos { frameTime ->
+                                val elapsed = frameTime - startTime
+                                val t = (elapsed.toFloat() / durationNs).coerceIn(0f, 1f)
+                                progress = 1f - (t * t)
+                                if (t >= 1f) done = true
+                            }
+                        }
+                        exitingIds = exitingIds - photo.id
+                        photoCache.remove(photo.id)
+                    }
+                } else {
+                    // Entry: bounce in with overshoot
+                    LaunchedEffect(Unit) {
+                        val startTime = withFrameNanos { it }
+                        val durationNs = 300_000_000L // 300ms
+                        var done = false
+                        while (!done) {
+                            withFrameNanos { frameTime ->
+                                val elapsed = frameTime - startTime
+                                val t = (elapsed.toFloat() / durationNs).coerceIn(0f, 1f)
+                                progress = if (t < 1f) {
+                                    val t2 = t - 1f
+                                    t2 * t2 * (3f * t2 + 2f) + 1f
+                                } else 1f
+                                if (t >= 1f) done = true
+                            }
                         }
                     }
                 }
+
                 Box(modifier = Modifier
                     .size(52.dp)
                     .graphicsLayer {
@@ -531,19 +563,20 @@ private fun SelectedPhotosStrip(
                         alpha = progress
                     }
                 ) {
-                        AsyncImage(
-                            model = ImageRequest.Builder(LocalContext.current)
-                                .data(photo.uri)
-                                .size(Size(104, 104))
-                                .precision(Precision.INEXACT)
-                                .memoryCacheKey("strip_${photo.id}")
-                                .build(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(6.dp))
-                        )
+                    AsyncImage(
+                        model = ImageRequest.Builder(LocalContext.current)
+                            .data(photo.uri)
+                            .size(Size(104, 104))
+                            .precision(Precision.INEXACT)
+                            .memoryCacheKey("strip_${photo.id}")
+                            .build(),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(6.dp))
+                    )
+                    if (!isExiting) {
                         SmallFloatingActionButton(
                             onClick = { onRemovePhoto(photo.id) },
                             modifier = Modifier
@@ -559,6 +592,7 @@ private fun SelectedPhotosStrip(
                                 contentDescription = "Remove",
                                 modifier = Modifier.size(12.dp)
                             )
+                        }
                     }
                 }
             }
@@ -635,16 +669,7 @@ private fun PhotoPreview(
                     } catch (_: Exception) {
                         view.setImageURI(photo.uri)
                     }
-                    view.post {
-                        val d = view.drawable ?: return@post
-                        val imgW = d.intrinsicWidth.toFloat()
-                        val imgH = d.intrinsicHeight.toFloat()
-                        val vW = view.width.toFloat()
-                        val vH = view.height.toFloat()
-                        if (imgW > 0 && imgH > 0 && vW > 0 && vH > 0) {
-                            view.doubleTapScale = maxOf(vW / imgW, vH / imgH) / minOf(vW / imgW, vH / imgH)
-                        }
-                    }
+                    view.post { view.updateDoubleTapScale() }
                 },
                 modifier = Modifier.fillMaxSize()
             )

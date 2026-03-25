@@ -195,3 +195,35 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | Two-pass BitmapFactory decode: bounds-only pass then inSampleSize decode at ~2x screen resolution | SUCCESS | Already in sandbox, now ported to app. Graceful fallback to setImageURI on exception |
+
+### Code Simplification — 2026-03-25
+
+**Goal:** Clean up code quality and efficiency issues found by review agents
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Extract navigateBack() in PhotoPickerScreen | SUCCESS | Duplicated 4-branch when block (BackHandler + TopAppBar + FAB) → single function, 3 call sites |
+| 2 | Extract TouchImageView.updateDoubleTapScale() extension | SUCCESS | 8-line post{} block appeared 3x per module → one-liner call. New file: ui/util/TouchImageViewExt.kt |
+| 3 | Async bitmap decode in CanvasScreen | SUCCESS | BitmapFactory.decodeStream moved from synchronous callback to LaunchedEffect + Dispatchers.IO via pendingUri state |
+
+### Thumbnail Strip Exit Animation — 2026-03-25
+
+**Goal:** Animate photo removal from thumbnail strip (shrink + slide down + fade out)
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Per-item isExiting state with LaunchedEffect(isExiting) key | FAILED | LaunchedEffect key change from false→true didn't reliably trigger the exit animation |
+| 2 | Conditionally composed exit LaunchedEffect inside if(isExiting) | FAILED | Only works for X button click — grid deselection bypasses it because parent removes photo from list, destroying the composable before animation can play |
+| 3 | **Parent-driven exit: photoCache + exitingIds + displayPhotos diffing** | **SUCCESS** | Strip maintains local photoCache of all seen photos and diffs selectedIds vs prevIds to detect removals. Removed photos stay in displayPhotos during 150ms exit animation. Works for both grid deselection and X button removal |
+
+**Root cause of attempts 1-2:** When a photo is deselected via the grid, `selectedPhotoList` removes it immediately. The strip's `forEach` no longer includes it, so the `key(photo.id)` composable leaves composition, destroying all state and cancelling all LaunchedEffects. The exit animation never gets a chance to run.
+
+**Solution:** The strip keeps its own display list that includes "exiting" photos sourced from a cache. The composable stays alive during the animation, then cleans itself up.
+
+### Port Exit Animation + Simplification to Main App — 2026-03-25
+
+**Goal:** Port thumbnail exit animation, navigateBack(), updateDoubleTapScale(), and async bitmap decode to main app
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Full /port workflow with side-by-side verification | SUCCESS | Zero behavioral differences confirmed. All composables, animations, query functions identical between sandbox and app |
