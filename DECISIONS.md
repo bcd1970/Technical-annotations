@@ -380,3 +380,11 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | 9 | LAYER_TYPE_SOFTWARE for large bitmap support | SUCCESS | Prevents "Canvas: trying to draw too large bitmap" crash on hardware-accelerated canvas with high-res photos |
 
 **Key insight:** The "duplicate slide" on release had two distinct causes: (1) the settle animation itself was perceived as redundant motion, fixed by removing it; (2) Compose's `onReorderComplete` callback changing `activePhotoIndex` mid-bridge caused per-crop rendering to draw the wrong photo at the wrong position, fixed by the `bridgeActive` freeze flag.
+
+### Port Smooth Drag-to-Reorder to Main App — 2026-03-29
+
+**Goal:** Port all drag-to-reorder animation improvements from sandbox to main app
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Full rewrite of app EditableTouchImageView to match sandbox (FrameAnimator, bridge, no-op setters, LAYER_TYPE_SOFTWARE) | SUCCESS | Side-by-side verified — zero functional differences after package normalization. Both apps build and install clean |
