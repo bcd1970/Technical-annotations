@@ -362,3 +362,21 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | 1 | Full rewrite of app EditableTouchImageView to match sandbox (crop mode, handles, overlay, touch) | SUCCESS | Side-by-side diff verified — zero functional differences after package normalization |
 | 2 | Full rewrite of app CanvasScreen to match sandbox (PhotoTransform, bitmap cache, command bar, crop mode) | SUCCESS | Side-by-side diff verified — only difference is extra PhotoPickerScreen import (different package in app) |
 | 3 | Both apps build and install clean | SUCCESS | No warnings, no compliance/security findings |
+
+### Smooth Drag-to-Reorder Animations — 2026-03-29
+
+**Goal:** Make the drag-to-reorder flow visually smoother — from drag initiation through swap to release
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | ValueAnimator for drag start dim/lift, swap slide, release settle | FAILED | Device had animator_duration_scale=0.0, making all ValueAnimators instant (0ms) |
+| 2 | Custom FrameAnimator using postOnAnimation (immune to system animation scale) | SUCCESS | Frame-based animation loop, bypasses system animator scale. 80ms drag start, 120ms swap slide |
+| 3 | Settle animation on release (150ms OvershootInterpolator) | FAILED | User perceived it as a "duplicate slide" — the settle motion repeated the swap's visual effect |
+| 4 | Remove settle animation, instant snap to target slot on release | SUCCESS | No additional motion after release — photos stay where they are |
+| 5 | Bridge gap: keep per-crop rendering until new stitched bitmap arrives | FAILED (initially) | Compose update block called setters (editMode, activePhotoIndex) that invalidated view on every recomposition → sluggish per-crop redraws |
+| 6 | No-op property setters (only invalidate when value changes) | SUCCESS | editMode/activePhotoIndex setters check `field != value` before invalidating — eliminates unnecessary redraws |
+| 7 | Skip stale bitmap via setImageBitmap override + staleBitmapRef | SUCCESS | During bridge, Compose's old bitmap calls are skipped by reference equality check. New bitmap accepted and clears state |
+| 8 | bridgeActive flag to freeze activePhotoIndex during bridge | SUCCESS | Root cause of "duplicate slide" was Compose changing activePhotoIndex mid-bridge, corrupting per-crop rendering (wrong photo drawn at wrong position). Freezing it fixes the visual glitch |
+| 9 | LAYER_TYPE_SOFTWARE for large bitmap support | SUCCESS | Prevents "Canvas: trying to draw too large bitmap" crash on hardware-accelerated canvas with high-res photos |
+
+**Key insight:** The "duplicate slide" on release had two distinct causes: (1) the settle animation itself was perceived as redundant motion, fixed by removing it; (2) Compose's `onReorderComplete` callback changing `activePhotoIndex` mid-bridge caused per-crop rendering to draw the wrong photo at the wrong position, fixed by the `bridgeActive` freeze flag.

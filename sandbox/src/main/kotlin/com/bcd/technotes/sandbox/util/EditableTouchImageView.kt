@@ -11,16 +11,22 @@ import android.graphics.RectF
 import android.view.HapticFeedbackConstants
 import android.view.MotionEvent
 import android.view.ViewConfiguration
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import com.ortiz.touchview.TouchImageView
 import kotlin.math.abs
 
 class EditableTouchImageView(context: Context) : TouchImageView(context) {
 
+    init {
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
+    }
+
     var editMode = false
-        set(value) { field = value; invalidate() }
+        set(value) { if (field != value) { field = value; invalidate() } }
 
     var activePhotoIndex = -1
-        set(value) { field = value; invalidate() }
+        set(value) { if (!bridgeActive && field != value) { field = value; invalidate() } }
 
     var photoBounds: List<RectF> = emptyList()
 
@@ -66,9 +72,7 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
         strokeWidth = 8f
     }
 
-    private val dimPaint = Paint().apply {
-        colorFilter = ColorMatrixColorFilter(ColorMatrix().apply { setScale(0.6f, 0.6f, 0.6f, 1f) })
-    }
+    private val dimPaint = Paint()
 
     private val photoPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
@@ -105,6 +109,30 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
     private var activeDisplayIndex = -1
     private val touchSlop by lazy { ViewConfiguration.get(context).scaledTouchSlop }
     private var slotCenters: List<Float> = emptyList()
+
+    // --- Animation state ---
+    private var dimFactor = 1f
+    private var activeScale = 1f
+    private var isSettling = false
+    private val slotAnimOffsets = mutableMapOf<Int, Float>()
+    private var staleBitmapRef: Bitmap? = null
+    private var bridgeActive = false
+
+    override fun setImageBitmap(bm: Bitmap?) {
+        if (staleBitmapRef != null) {
+            if (bm === staleBitmapRef) return
+            staleBitmapRef = null
+            bridgeActive = false
+            isReorderDragging = false
+            isSettling = false
+            photoCrops = emptyList()
+            currentOrder.clear()
+            activeDisplayIndex = -1
+            slotCenters = emptyList()
+            dragOffsetPx = 0f
+        }
+        super.setImageBitmap(bm)
+    }
 
     fun photoIndexAt(bitmapX: Float): Int =
         photoBounds.indexOfFirst { bitmapX >= it.left && bitmapX <= it.right }
@@ -234,6 +262,81 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
         }
     }
 
+    // --- Frame-based animation (immune to system animator_duration_scale) ---
+
+    private inner class FrameAnimator(
+        private val durationMs: Long,
+        private val interpolator: android.view.animation.Interpolator,
+        private val onUpdate: (fraction: Float) -> Unit,
+        private val onEnd: (() -> Unit)? = null
+    ) {
+        private var startTimeNs = 0L
+        private var cancelled = false
+
+        private val frameCallback = object : Runnable {
+            override fun run() {
+                if (cancelled) return
+                val elapsed = System.nanoTime() - startTimeNs
+                val rawFraction = (elapsed.toFloat() / (durationMs * 1_000_000L)).coerceAtMost(1f)
+                val fraction = interpolator.getInterpolation(rawFraction)
+                onUpdate(fraction)
+                if (rawFraction < 1f) {
+                    postOnAnimation(this)
+                } else {
+                    onEnd?.invoke()
+                }
+            }
+        }
+
+        fun start() {
+            startTimeNs = System.nanoTime()
+            cancelled = false
+            postOnAnimation(frameCallback)
+        }
+
+        fun cancel() {
+            cancelled = true
+            removeCallbacks(frameCallback)
+        }
+    }
+
+    // --- Animation helpers ---
+
+    private var dragStartAnimator: FrameAnimator? = null
+    private var settleAnimator: FrameAnimator? = null
+    private val swapAnimators = mutableMapOf<Int, FrameAnimator>()
+
+    private fun cancelAllReorderAnimations() {
+        dragStartAnimator?.cancel()
+        dragStartAnimator = null
+        settleAnimator?.cancel()
+        settleAnimator = null
+        swapAnimators.values.forEach { it.cancel() }
+        swapAnimators.clear()
+        slotAnimOffsets.clear()
+    }
+
+    private fun clearReorderState() {
+        cancelAllReorderAnimations()
+        isReorderDragging = false
+        isSettling = false
+        staleBitmapRef = null
+        bridgeActive = false
+        photoCrops = emptyList()
+        currentOrder.clear()
+        activeDisplayIndex = -1
+        slotCenters = emptyList()
+        dragOffsetPx = 0f
+        dimFactor = 1f
+        activeScale = 1f
+        invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        super.onDetachedFromWindow()
+        cancelAllReorderAnimations()
+    }
+
     // --- Reorder helpers ---
 
     private fun startReorderDrag() {
@@ -258,8 +361,17 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
             (left + right) / 2f
         }
 
+        cancelAllReorderAnimations()
+        dimFactor = 1f
+        activeScale = 1f
+
+        dragStartAnimator = FrameAnimator(80, DecelerateInterpolator(), { fraction ->
+            dimFactor = 1f - 0.4f * fraction
+            activeScale = 1f + 0.05f * fraction
+            invalidate()
+        }).also { it.start() }
+
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
-        invalidate()
     }
 
     private fun updateReorderDrag(screenDragX: Float) {
@@ -276,9 +388,16 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
             val nextSlotDataIdx = currentOrder[idx + 1]
             val nextSlotCenter = slotCenters[nextSlotDataIdx]
             if (activeCenterNow > nextSlotCenter) {
+                val displacedDataIdx = nextSlotDataIdx
+                val activeScreenWidth = run {
+                    val aL = transformCoordBitmapToTouch(photoBounds[activePhotoIndex].left, 0f).x
+                    val aR = transformCoordBitmapToTouch(photoBounds[activePhotoIndex].right, 0f).x
+                    aR - aL
+                }
                 currentOrder[idx] = currentOrder[idx + 1].also { currentOrder[idx + 1] = currentOrder[idx] }
                 activeDisplayIndex = idx + 1
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                animateSlotTransition(displacedDataIdx, activeScreenWidth)
             }
         }
 
@@ -287,26 +406,68 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
             val prevSlotDataIdx = currentOrder[idx2 - 1]
             val prevSlotCenter = slotCenters[prevSlotDataIdx]
             if (activeCenterNow < prevSlotCenter) {
+                val displacedDataIdx = prevSlotDataIdx
+                val activeScreenWidth = run {
+                    val aL = transformCoordBitmapToTouch(photoBounds[activePhotoIndex].left, 0f).x
+                    val aR = transformCoordBitmapToTouch(photoBounds[activePhotoIndex].right, 0f).x
+                    aR - aL
+                }
                 currentOrder[idx2] = currentOrder[idx2 - 1].also { currentOrder[idx2 - 1] = currentOrder[idx2] }
                 activeDisplayIndex = idx2 - 1
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                animateSlotTransition(displacedDataIdx, -activeScreenWidth)
             }
         }
 
         invalidate()
     }
 
-    private fun finishReorderDrag() {
-        isReorderDragging = false
-        if (currentOrder != photoBounds.indices.toList()) {
-            onReorderComplete?.invoke(currentOrder.toList())
+    private fun animateSlotTransition(dataIdx: Int, startOffsetPx: Float) {
+        swapAnimators[dataIdx]?.cancel()
+        val currentOffset = slotAnimOffsets[dataIdx] ?: 0f
+        val effectiveStart = startOffsetPx + currentOffset
+        slotAnimOffsets[dataIdx] = effectiveStart
+
+        val animator = FrameAnimator(120, DecelerateInterpolator(), { fraction ->
+            slotAnimOffsets[dataIdx] = effectiveStart + (0f - effectiveStart) * fraction
+            invalidate()
+        }, {
+            slotAnimOffsets.remove(dataIdx)
+            swapAnimators.remove(dataIdx)
+        })
+        swapAnimators[dataIdx] = animator
+        animator.start()
+    }
+
+    private fun finishReorderWithBridge() {
+        // Cancel any running swap animations
+        swapAnimators.values.forEach { it.cancel() }
+        swapAnimators.clear()
+        slotAnimOffsets.clear()
+
+        // Snap active photo to target slot
+        var targetBitmapX = 0f
+        for (j in 0 until activeDisplayIndex) {
+            targetBitmapX += photoBounds[currentOrder[j]].width()
         }
-        photoCrops = emptyList()
-        currentOrder.clear()
-        activeDisplayIndex = -1
-        slotCenters = emptyList()
-        dragOffsetPx = 0f
-        invalidate()
+        val targetScreenLeft = transformCoordBitmapToTouch(targetBitmapX, 0f).x
+        val activeOrigLeft = transformCoordBitmapToTouch(photoBounds[activePhotoIndex].left, 0f).x
+        dragOffsetPx = targetScreenLeft - activeOrigLeft
+        dimFactor = 1f
+        activeScale = 1f
+
+        val orderChanged = currentOrder != photoBounds.indices.toList()
+        val finalOrder = currentOrder.toList()
+        if (orderChanged) {
+            bridgeActive = true
+            staleBitmapRef = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
+            cancelAllReorderAnimations()
+            isSettling = false
+            invalidate()
+            onReorderComplete?.invoke(finalOrder)
+        } else {
+            clearReorderState()
+        }
     }
 
     // --- Touch dispatch ---
@@ -333,10 +494,7 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
 
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (isReorderDragging) {
-                    isReorderDragging = false
-                    photoCrops = emptyList()
-                    currentOrder.clear()
-                    invalidate()
+                    clearReorderState()
                 }
                 isDragCandidate = false
                 dragCancelled = true
@@ -345,6 +503,7 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
 
             MotionEvent.ACTION_MOVE -> {
                 if (dragCancelled) return super.dispatchTouchEvent(event)
+                if (isSettling) return true
 
                 if (!isReorderDragging && isDragCandidate) {
                     val dx = abs(event.x - touchDownX)
@@ -378,8 +537,8 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
             }
 
             MotionEvent.ACTION_UP -> {
-                if (isReorderDragging) {
-                    finishReorderDrag()
+                if (isReorderDragging && !isSettling) {
+                    finishReorderWithBridge()
                     return true
                 }
                 isDragCandidate = false
@@ -389,10 +548,7 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
 
             MotionEvent.ACTION_CANCEL -> {
                 if (isReorderDragging) {
-                    isReorderDragging = false
-                    photoCrops = emptyList()
-                    currentOrder.clear()
-                    invalidate()
+                    clearReorderState()
                 }
                 isDragCandidate = false
                 dragCancelled = false
@@ -430,6 +586,10 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
             return
         }
 
+        dimPaint.colorFilter = ColorMatrixColorFilter(
+            ColorMatrix().apply { setScale(dimFactor, dimFactor, dimFactor, 1f) }
+        )
+
         canvas.drawColor(android.graphics.Color.BLACK)
 
         val screenTop = transformCoordBitmapToTouch(0f, 0f).y
@@ -445,8 +605,9 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
             }
             val slotWidth = photoBounds[dataIdx].width()
 
-            val screenLeft = transformCoordBitmapToTouch(slotX, 0f).x
-            val screenRight = transformCoordBitmapToTouch(slotX + slotWidth, 0f).x
+            val animOffset = slotAnimOffsets[dataIdx] ?: 0f
+            val screenLeft = transformCoordBitmapToTouch(slotX, 0f).x + animOffset
+            val screenRight = transformCoordBitmapToTouch(slotX + slotWidth, 0f).x + animOffset
 
             canvas.drawBitmap(
                 photoCrops[dataIdx],
@@ -464,18 +625,23 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
         val aLeft = transformCoordBitmapToTouch(activeOrigBounds.left, activeOrigBounds.top)
         val aRight = transformCoordBitmapToTouch(activeOrigBounds.right, activeOrigBounds.bottom)
 
+        val centerX = (aLeft.x + aRight.x) / 2f + dragOffsetPx
+        val centerY = (aLeft.y + aRight.y) / 2f
+        val halfW = (aRight.x - aLeft.x) / 2f * activeScale
+        val halfH = (aRight.y - aLeft.y) / 2f * activeScale
+
         canvas.drawBitmap(
             photoCrops[activePhotoIndex],
             null,
             android.graphics.Rect(
-                (aLeft.x + dragOffsetPx).toInt(), aLeft.y.toInt(),
-                (aRight.x + dragOffsetPx).toInt(), aRight.y.toInt()
+                (centerX - halfW).toInt(), (centerY - halfH).toInt(),
+                (centerX + halfW).toInt(), (centerY + halfH).toInt()
             ),
             photoPaint
         )
         canvas.drawRect(
-            aLeft.x + dragOffsetPx, aLeft.y,
-            aRight.x + dragOffsetPx, aRight.y,
+            centerX - halfW, centerY - halfH,
+            centerX + halfW, centerY + halfH,
             activePaint
         )
     }
