@@ -30,6 +30,8 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
 
     var photoBounds: List<RectF> = emptyList()
 
+    var isHorizontalLayout = true
+
     var onReorderComplete: ((newOrder: List<Int>) -> Unit)? = null
 
     // --- Crop mode ---
@@ -56,6 +58,43 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
         if (activePhotoIndex in photoBounds.indices) {
             cropRect = RectF(photoBounds[activePhotoIndex])
         }
+    }
+
+    // --- Integrated pan for grid layouts ---
+    var panEnabled = false
+    var photoVisibleRects: List<RectF> = emptyList()
+    var onPanComplete: ((panX: Float, panY: Float) -> Unit)? = null
+    var getTransformedBitmap: ((index: Int) -> Bitmap?)? = null
+
+    private var isPanDragging = false
+    private var panBridgeActive = false
+    private var panDragOffsetX = 0f
+    private var panDragOffsetY = 0f
+    private var panTouchDownX = 0f
+    private var panTouchDownY = 0f
+    private var panBitmap: Bitmap? = null
+
+    private fun isPhotoCropped(index: Int): Boolean {
+        if (index !in photoVisibleRects.indices) return false
+        val vis = photoVisibleRects[index]
+        return vis.left > 0.001f || vis.top > 0.001f || vis.right < 0.999f || vis.bottom < 0.999f
+    }
+
+    private fun clearPanState() {
+        panBitmap = null
+        panBridgeActive = false
+        isPanDragging = false
+        panDragOffsetX = 0f
+        panDragOffsetY = 0f
+    }
+
+    private val blackPaint = Paint().apply { color = android.graphics.Color.BLACK }
+
+    private val photoOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = android.graphics.Color.WHITE
+        alpha = 120
+        strokeWidth = 3f
     }
 
     // --- Paints ---
@@ -104,38 +143,53 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
     private var touchDownX = 0f
     private var touchDownY = 0f
     private var dragOffsetPx = 0f
+    private var dragOffsetY = 0f
     private var photoCrops: List<Bitmap> = emptyList()
     private var currentOrder: MutableList<Int> = mutableListOf()
     private var activeDisplayIndex = -1
     private val touchSlop by lazy { ViewConfiguration.get(context).scaledTouchSlop }
     private var slotCenters: List<Float> = emptyList()
+    private var slotCenters2D: List<PointF> = emptyList()
 
     // --- Animation state ---
     private var dimFactor = 1f
     private var activeScale = 1f
     private var isSettling = false
     private val slotAnimOffsets = mutableMapOf<Int, Float>()
+    private val slotAnimOffsetsY = mutableMapOf<Int, Float>()
     private var staleBitmapRef: Bitmap? = null
     private var bridgeActive = false
+    private var bridgeFullBitmap: Bitmap? = null
+    private var bridgeTargetCellIdx = -1
 
     override fun setImageBitmap(bm: Bitmap?) {
+        if (panBridgeActive) {
+            clearPanState()
+        }
         if (staleBitmapRef != null) {
             if (bm === staleBitmapRef) return
             staleBitmapRef = null
             bridgeActive = false
+            bridgeFullBitmap = null
+            bridgeTargetCellIdx = -1
             isReorderDragging = false
             isSettling = false
             photoCrops = emptyList()
             currentOrder.clear()
             activeDisplayIndex = -1
             slotCenters = emptyList()
+            slotCenters2D = emptyList()
             dragOffsetPx = 0f
+            dragOffsetY = 0f
         }
         super.setImageBitmap(bm)
     }
 
-    fun photoIndexAt(bitmapX: Float): Int =
-        photoBounds.indexOfFirst { bitmapX >= it.left && bitmapX <= it.right }
+    fun photoIndexAt(bitmapX: Float, bitmapY: Float): Int =
+        photoBounds.indexOfFirst {
+            bitmapX >= it.left && bitmapX <= it.right &&
+            bitmapY >= it.top && bitmapY <= it.bottom
+        }
 
     // --- Crop handle helpers ---
 
@@ -314,6 +368,7 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
         swapAnimators.values.forEach { it.cancel() }
         swapAnimators.clear()
         slotAnimOffsets.clear()
+        slotAnimOffsetsY.clear()
     }
 
     private fun clearReorderState() {
@@ -322,11 +377,15 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
         isSettling = false
         staleBitmapRef = null
         bridgeActive = false
+        bridgeFullBitmap = null
+        bridgeTargetCellIdx = -1
         photoCrops = emptyList()
         currentOrder.clear()
         activeDisplayIndex = -1
         slotCenters = emptyList()
+        slotCenters2D = emptyList()
         dragOffsetPx = 0f
+        dragOffsetY = 0f
         dimFactor = 1f
         activeScale = 1f
         invalidate()
@@ -353,12 +412,21 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
         currentOrder = photoBounds.indices.toMutableList()
         activeDisplayIndex = currentOrder.indexOf(activePhotoIndex)
         dragOffsetPx = 0f
+        dragOffsetY = 0f
         isReorderDragging = true
 
-        slotCenters = photoBounds.map { rect ->
-            val left = transformCoordBitmapToTouch(rect.left, 0f).x
-            val right = transformCoordBitmapToTouch(rect.right, 0f).x
-            (left + right) / 2f
+        if (isHorizontalLayout) {
+            slotCenters = photoBounds.map { rect ->
+                val left = transformCoordBitmapToTouch(rect.left, 0f).x
+                val right = transformCoordBitmapToTouch(rect.right, 0f).x
+                (left + right) / 2f
+            }
+        } else {
+            slotCenters2D = photoBounds.map { rect ->
+                val tl = transformCoordBitmapToTouch(rect.left, rect.top)
+                val br = transformCoordBitmapToTouch(rect.right, rect.bottom)
+                PointF((tl.x + br.x) / 2f, (tl.y + br.y) / 2f)
+            }
         }
 
         cancelAllReorderAnimations()
@@ -374,7 +442,9 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
         performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
     }
 
-    private fun updateReorderDrag(screenDragX: Float) {
+    // --- 1D horizontal reorder update ---
+
+    private fun updateReorderDragH(screenDragX: Float) {
         dragOffsetPx = screenDragX
 
         val activeOrigBounds = photoBounds[activePhotoIndex]
@@ -397,7 +467,7 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
                 currentOrder[idx] = currentOrder[idx + 1].also { currentOrder[idx + 1] = currentOrder[idx] }
                 activeDisplayIndex = idx + 1
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                animateSlotTransition(displacedDataIdx, activeScreenWidth)
+                animateSlotTransition(displacedDataIdx, activeScreenWidth, 0f)
             }
         }
 
@@ -415,24 +485,72 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
                 currentOrder[idx2] = currentOrder[idx2 - 1].also { currentOrder[idx2 - 1] = currentOrder[idx2] }
                 activeDisplayIndex = idx2 - 1
                 performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
-                animateSlotTransition(displacedDataIdx, -activeScreenWidth)
+                animateSlotTransition(displacedDataIdx, -activeScreenWidth, 0f)
             }
         }
 
         invalidate()
     }
 
-    private fun animateSlotTransition(dataIdx: Int, startOffsetPx: Float) {
+    // --- 2D grid reorder update ---
+
+    private fun updateReorderDrag2D(screenDragX: Float, screenDragY: Float) {
+        dragOffsetPx = screenDragX
+        dragOffsetY = screenDragY
+
+        // Active photo center in screen coords
+        val activeOrigBounds = photoBounds[activePhotoIndex]
+        val aTL = transformCoordBitmapToTouch(activeOrigBounds.left, activeOrigBounds.top)
+        val aBR = transformCoordBitmapToTouch(activeOrigBounds.right, activeOrigBounds.bottom)
+        val activeCenterX = (aTL.x + aBR.x) / 2f + dragOffsetPx
+        val activeCenterY = (aTL.y + aBR.y) / 2f + dragOffsetY
+
+        // Check each cell by CELL index (photoBounds[cellIdx] = fixed cell position)
+        for (cellIdx in currentOrder.indices) {
+            if (cellIdx == activeDisplayIndex) continue
+
+            val cellBounds = photoBounds[cellIdx]
+            val cTL = transformCoordBitmapToTouch(cellBounds.left, cellBounds.top)
+            val cBR = transformCoordBitmapToTouch(cellBounds.right, cellBounds.bottom)
+
+            if (activeCenterX in cTL.x..cBR.x && activeCenterY in cTL.y..cBR.y) {
+                val displacedDataIdx = currentOrder[cellIdx]
+
+                // Animation: displaced moves from its current cell (cellIdx) to active's cell (activeDisplayIndex)
+                val activeCellBounds = photoBounds[activeDisplayIndex]
+                val acTL = transformCoordBitmapToTouch(activeCellBounds.left, activeCellBounds.top)
+                val acBR = transformCoordBitmapToTouch(activeCellBounds.right, activeCellBounds.bottom)
+                val startOffX = ((cTL.x + cBR.x) - (acTL.x + acBR.x)) / 2f
+                val startOffY = ((cTL.y + cBR.y) - (acTL.y + acBR.y)) / 2f
+
+                currentOrder[activeDisplayIndex] = displacedDataIdx
+                currentOrder[cellIdx] = activePhotoIndex
+                activeDisplayIndex = cellIdx
+                performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                animateSlotTransition(displacedDataIdx, startOffX, startOffY)
+                break
+            }
+        }
+
+        invalidate()
+    }
+
+    private fun animateSlotTransition(dataIdx: Int, startOffsetX: Float, startOffsetY: Float) {
         swapAnimators[dataIdx]?.cancel()
-        val currentOffset = slotAnimOffsets[dataIdx] ?: 0f
-        val effectiveStart = startOffsetPx + currentOffset
-        slotAnimOffsets[dataIdx] = effectiveStart
+        val currentOffX = slotAnimOffsets[dataIdx] ?: 0f
+        val currentOffY = slotAnimOffsetsY[dataIdx] ?: 0f
+        val effectiveStartX = startOffsetX + currentOffX
+        val effectiveStartY = startOffsetY + currentOffY
+        slotAnimOffsets[dataIdx] = effectiveStartX
+        slotAnimOffsetsY[dataIdx] = effectiveStartY
 
         val animator = FrameAnimator(120, DecelerateInterpolator(), { fraction ->
-            slotAnimOffsets[dataIdx] = effectiveStart + (0f - effectiveStart) * fraction
+            slotAnimOffsets[dataIdx] = effectiveStartX * (1f - fraction)
+            slotAnimOffsetsY[dataIdx] = effectiveStartY * (1f - fraction)
             invalidate()
         }, {
             slotAnimOffsets.remove(dataIdx)
+            slotAnimOffsetsY.remove(dataIdx)
             swapAnimators.remove(dataIdx)
         })
         swapAnimators[dataIdx] = animator
@@ -440,24 +558,43 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
     }
 
     private fun finishReorderWithBridge() {
-        // Cancel any running swap animations
         swapAnimators.values.forEach { it.cancel() }
         swapAnimators.clear()
         slotAnimOffsets.clear()
+        slotAnimOffsetsY.clear()
 
-        // Snap active photo to target slot
-        var targetBitmapX = 0f
-        for (j in 0 until activeDisplayIndex) {
-            targetBitmapX += photoBounds[currentOrder[j]].width()
+        if (isHorizontalLayout) {
+            // Snap active photo to target slot (horizontal)
+            var targetBitmapX = 0f
+            for (j in 0 until activeDisplayIndex) {
+                targetBitmapX += photoBounds[currentOrder[j]].width()
+            }
+            val targetScreenLeft = transformCoordBitmapToTouch(targetBitmapX, 0f).x
+            val activeOrigLeft = transformCoordBitmapToTouch(photoBounds[activePhotoIndex].left, 0f).x
+            dragOffsetPx = targetScreenLeft - activeOrigLeft
+        } else {
+            // Snap active photo center to target cell center (2D)
+            val targetCellBounds = photoBounds[activeDisplayIndex]
+            val targetTL = transformCoordBitmapToTouch(targetCellBounds.left, targetCellBounds.top)
+            val targetBR = transformCoordBitmapToTouch(targetCellBounds.right, targetCellBounds.bottom)
+            val activeBounds = photoBounds[activePhotoIndex]
+            val activeTL = transformCoordBitmapToTouch(activeBounds.left, activeBounds.top)
+            val activeBR = transformCoordBitmapToTouch(activeBounds.right, activeBounds.bottom)
+            dragOffsetPx = (targetTL.x + targetBR.x) / 2f - (activeTL.x + activeBR.x) / 2f
+            dragOffsetY = (targetTL.y + targetBR.y) / 2f - (activeTL.y + activeBR.y) / 2f
         }
-        val targetScreenLeft = transformCoordBitmapToTouch(targetBitmapX, 0f).x
-        val activeOrigLeft = transformCoordBitmapToTouch(photoBounds[activePhotoIndex].left, 0f).x
-        dragOffsetPx = targetScreenLeft - activeOrigLeft
         dimFactor = 1f
         activeScale = 1f
 
         val orderChanged = currentOrder != photoBounds.indices.toList()
         val finalOrder = currentOrder.toList()
+
+        // For 2D grids: fetch full photo and draw center-cropped into target cell during bridge
+        if (!isHorizontalLayout && activeDisplayIndex != activePhotoIndex && orderChanged) {
+            bridgeFullBitmap = getTransformedBitmap?.invoke(activePhotoIndex)
+            bridgeTargetCellIdx = activeDisplayIndex
+        }
+
         if (orderChanged) {
             bridgeActive = true
             staleBitmapRef = (drawable as? android.graphics.drawable.BitmapDrawable)?.bitmap
@@ -468,6 +605,39 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
         } else {
             clearReorderState()
         }
+    }
+
+    // --- Pan completion ---
+
+    private fun finishPanDrag() {
+        if (activePhotoIndex !in photoVisibleRects.indices) {
+            clearPanState()
+            invalidate()
+            return
+        }
+        val vis = photoVisibleRects[activePhotoIndex]
+        val bound = photoBounds[activePhotoIndex]
+        val tl = transformCoordBitmapToTouch(bound.left, bound.top)
+        val br = transformCoordBitmapToTouch(bound.right, bound.bottom)
+        val cellW = br.x - tl.x
+        val cellH = br.y - tl.y
+        val visW = vis.right - vis.left
+        val visH = vis.bottom - vis.top
+        val fullW = cellW / visW
+        val fullH = cellH / visH
+
+        val newVisLeft = vis.left - panDragOffsetX / fullW
+        val newVisTop = vis.top - panDragOffsetY / fullH
+
+        val maxVisLeft = 1f - visW
+        val maxVisTop = 1f - visH
+        val newPanX = if (maxVisLeft > 0.001f) (newVisLeft / maxVisLeft).coerceIn(0f, 1f) else 0.5f
+        val newPanY = if (maxVisTop > 0.001f) (newVisTop / maxVisTop).coerceIn(0f, 1f) else 0.5f
+
+        isPanDragging = false
+        panBridgeActive = true
+        onPanComplete?.invoke(newPanX, newPanY)
+        invalidate()
     }
 
     // --- Touch dispatch ---
@@ -493,6 +663,13 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
+                if (isPanDragging) {
+                    isPanDragging = false
+                    panDragOffsetX = 0f
+                    panDragOffsetY = 0f
+                    clearPanState()
+                    invalidate()
+                }
                 if (isReorderDragging) {
                     clearReorderState()
                 }
@@ -505,21 +682,53 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
                 if (dragCancelled) return super.dispatchTouchEvent(event)
                 if (isSettling) return true
 
+                // Pan drag: update offset
+                if (isPanDragging) {
+                    panDragOffsetX = event.x - panTouchDownX
+                    panDragOffsetY = event.y - panTouchDownY
+                    invalidate()
+                    return true
+                }
+
                 if (!isReorderDragging && isDragCandidate) {
                     val dx = abs(event.x - touchDownX)
                     val dy = abs(event.y - touchDownY)
-                    if (dx > touchSlop && dx > dy * 1.5f) {
+                    val dragStarted = if (isHorizontalLayout) {
+                        dx > touchSlop && dx > dy * 1.5f
+                    } else {
+                        maxOf(dx, dy) > touchSlop
+                    }
+                    if (dragStarted) {
                         isDragCandidate = false
                         val bitmapPoint = transformCoordTouchToBitmap(touchDownX, touchDownY, true)
-                        val tappedIndex = photoIndexAt(bitmapPoint.x)
+                        val tappedIndex = photoIndexAt(bitmapPoint.x, bitmapPoint.y)
                         if (tappedIndex < 0) return super.dispatchTouchEvent(event)
-                        activePhotoIndex = tappedIndex
-                        startReorderDrag()
-                        touchDownX = event.x
-                        val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
-                        super.dispatchTouchEvent(cancel)
-                        cancel.recycle()
-                    } else if (dy > touchSlop) {
+
+                        // Grid layout: pan mode enabled + drag on active cropped photo → pan
+                        if (panEnabled && !isHorizontalLayout && tappedIndex == activePhotoIndex && isPhotoCropped(tappedIndex)) {
+                            val bmp = getTransformedBitmap?.invoke(tappedIndex)
+                            if (bmp != null) {
+                                panBitmap = bmp
+                                isPanDragging = true
+                                panTouchDownX = touchDownX
+                                panTouchDownY = touchDownY
+                                panDragOffsetX = event.x - panTouchDownX
+                                panDragOffsetY = event.y - panTouchDownY
+                                val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+                                super.dispatchTouchEvent(cancel)
+                                cancel.recycle()
+                                invalidate()
+                            }
+                        } else {
+                            activePhotoIndex = tappedIndex
+                            startReorderDrag()
+                            touchDownX = event.x
+                            touchDownY = event.y
+                            val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+                            super.dispatchTouchEvent(cancel)
+                            cancel.recycle()
+                        }
+                    } else if (isHorizontalLayout && dy > touchSlop) {
                         isDragCandidate = false
                         dragCancelled = true
                         return super.dispatchTouchEvent(event)
@@ -529,7 +738,11 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
                 }
 
                 if (isReorderDragging) {
-                    updateReorderDrag(event.x - touchDownX)
+                    if (isHorizontalLayout) {
+                        updateReorderDragH(event.x - touchDownX)
+                    } else {
+                        updateReorderDrag2D(event.x - touchDownX, event.y - touchDownY)
+                    }
                     return true
                 }
 
@@ -537,6 +750,10 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
             }
 
             MotionEvent.ACTION_UP -> {
+                if (isPanDragging) {
+                    finishPanDrag()
+                    return true
+                }
                 if (isReorderDragging && !isSettling) {
                     finishReorderWithBridge()
                     return true
@@ -547,6 +764,13 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
             }
 
             MotionEvent.ACTION_CANCEL -> {
+                if (isPanDragging) {
+                    isPanDragging = false
+                    panDragOffsetX = 0f
+                    panDragOffsetY = 0f
+                    clearPanState()
+                    invalidate()
+                }
                 if (isReorderDragging) {
                     clearReorderState()
                 }
@@ -578,6 +802,46 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
                 val paint = if (index == activePhotoIndex) activePaint else inactivePaint
                 canvas.drawRect(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y, paint)
             }
+            // Live pan: draw transformed photo at adjusted offset within cell
+            if ((isPanDragging || panBridgeActive) && panBitmap != null && activePhotoIndex in photoBounds.indices && activePhotoIndex in photoVisibleRects.indices) {
+                val bmp = panBitmap!!
+                val vis = photoVisibleRects[activePhotoIndex]
+                val bound = photoBounds[activePhotoIndex]
+                val tl = transformCoordBitmapToTouch(bound.left, bound.top)
+                val br = transformCoordBitmapToTouch(bound.right, bound.bottom)
+                val cellW = br.x - tl.x
+                val cellH = br.y - tl.y
+
+                // Same fill scale as stitching
+                val fillScale = maxOf(cellW / bmp.width, cellH / bmp.height)
+                val photoW = bmp.width * fillScale
+                val photoH = bmp.height * fillScale
+
+                // Current offset from visibleRect + drag
+                val visW = vis.right - vis.left
+                val visH = vis.bottom - vis.top
+                val fullW = cellW / visW
+                val fullH = cellH / visH
+                val baseLeft = tl.x - vis.left * fullW
+                val baseTop = tl.y - vis.top * fullH
+                val newLeft = baseLeft + panDragOffsetX
+                val newTop = baseTop + panDragOffsetY
+
+                // Clip to cell, fill black, draw photo
+                canvas.save()
+                canvas.clipRect(tl.x, tl.y, br.x, br.y)
+                canvas.drawRect(tl.x, tl.y, br.x, br.y, blackPaint)
+                canvas.drawBitmap(
+                    bmp, null,
+                    android.graphics.RectF(newLeft, newTop, newLeft + photoW, newTop + photoH),
+                    photoPaint
+                )
+                canvas.restore()
+
+                // Photo border outline (shows full photo edges)
+                canvas.drawRect(newLeft, newTop, newLeft + photoW, newTop + photoH, photoOutlinePaint)
+                canvas.drawRect(tl.x, tl.y, br.x, br.y, activePaint)
+            }
             return
         }
 
@@ -592,57 +856,114 @@ class EditableTouchImageView(context: Context) : TouchImageView(context) {
 
         canvas.drawColor(android.graphics.Color.BLACK)
 
-        val screenTop = transformCoordBitmapToTouch(0f, 0f).y
-        val screenBottom = transformCoordBitmapToTouch(0f, photoBounds[0].height()).y
+        if (isHorizontalLayout) {
+            // Horizontal row: draw non-active photos in slot order
+            val screenTop = transformCoordBitmapToTouch(0f, 0f).y
+            val screenBottom = transformCoordBitmapToTouch(0f, photoBounds[0].height()).y
 
-        for (i in currentOrder.indices) {
-            val dataIdx = currentOrder[i]
-            if (dataIdx == activePhotoIndex) continue
+            for (i in currentOrder.indices) {
+                val dataIdx = currentOrder[i]
+                if (dataIdx == activePhotoIndex) continue
 
-            var slotX = 0f
-            for (j in 0 until i) {
-                slotX += photoBounds[currentOrder[j]].width()
+                var slotX = 0f
+                for (j in 0 until i) {
+                    slotX += photoBounds[currentOrder[j]].width()
+                }
+                val slotWidth = photoBounds[dataIdx].width()
+
+                val animOffset = slotAnimOffsets[dataIdx] ?: 0f
+                val screenLeft = transformCoordBitmapToTouch(slotX, 0f).x + animOffset
+                val screenRight = transformCoordBitmapToTouch(slotX + slotWidth, 0f).x + animOffset
+
+                canvas.drawBitmap(
+                    photoCrops[dataIdx],
+                    null,
+                    android.graphics.Rect(
+                        screenLeft.toInt(), screenTop.toInt(),
+                        screenRight.toInt(), screenBottom.toInt()
+                    ),
+                    dimPaint
+                )
+                canvas.drawRect(screenLeft, screenTop, screenRight, screenBottom, inactivePaint)
             }
-            val slotWidth = photoBounds[dataIdx].width()
+        } else {
+            // Grid layout: draw non-active photos at their CELL positions (photoBounds[cellIdx])
+            for (cellIdx in currentOrder.indices) {
+                val dataIdx = currentOrder[cellIdx]
+                if (dataIdx == activePhotoIndex) continue
 
-            val animOffset = slotAnimOffsets[dataIdx] ?: 0f
-            val screenLeft = transformCoordBitmapToTouch(slotX, 0f).x + animOffset
-            val screenRight = transformCoordBitmapToTouch(slotX + slotWidth, 0f).x + animOffset
+                val bounds = photoBounds[cellIdx]
+                val tl = transformCoordBitmapToTouch(bounds.left, bounds.top)
+                val br = transformCoordBitmapToTouch(bounds.right, bounds.bottom)
+                val animOffX = slotAnimOffsets[dataIdx] ?: 0f
+                val animOffY = slotAnimOffsetsY[dataIdx] ?: 0f
 
-            canvas.drawBitmap(
-                photoCrops[dataIdx],
-                null,
-                android.graphics.Rect(
-                    screenLeft.toInt(), screenTop.toInt(),
-                    screenRight.toInt(), screenBottom.toInt()
-                ),
-                dimPaint
-            )
-            canvas.drawRect(screenLeft, screenTop, screenRight, screenBottom, inactivePaint)
+                canvas.drawBitmap(
+                    photoCrops[dataIdx],
+                    null,
+                    android.graphics.Rect(
+                        (tl.x + animOffX).toInt(), (tl.y + animOffY).toInt(),
+                        (br.x + animOffX).toInt(), (br.y + animOffY).toInt()
+                    ),
+                    dimPaint
+                )
+                canvas.drawRect(
+                    tl.x + animOffX, tl.y + animOffY,
+                    br.x + animOffX, br.y + animOffY,
+                    inactivePaint
+                )
+            }
         }
 
+        // Active photo follows finger / snapped to target
         val activeOrigBounds = photoBounds[activePhotoIndex]
         val aLeft = transformCoordBitmapToTouch(activeOrigBounds.left, activeOrigBounds.top)
         val aRight = transformCoordBitmapToTouch(activeOrigBounds.right, activeOrigBounds.bottom)
 
         val centerX = (aLeft.x + aRight.x) / 2f + dragOffsetPx
-        val centerY = (aLeft.y + aRight.y) / 2f
-        val halfW = (aRight.x - aLeft.x) / 2f * activeScale
-        val halfH = (aRight.y - aLeft.y) / 2f * activeScale
+        val centerY = (aLeft.y + aRight.y) / 2f + dragOffsetY
 
-        canvas.drawBitmap(
-            photoCrops[activePhotoIndex],
-            null,
-            android.graphics.Rect(
-                (centerX - halfW).toInt(), (centerY - halfH).toInt(),
-                (centerX + halfW).toInt(), (centerY + halfH).toInt()
-            ),
-            photoPaint
-        )
-        canvas.drawRect(
-            centerX - halfW, centerY - halfH,
-            centerX + halfW, centerY + halfH,
-            activePaint
-        )
+        // Bridge active + full bitmap: draw center-cropped into target cell (matches final stitched output)
+        if (bridgeActive && bridgeFullBitmap != null && bridgeTargetCellIdx in photoBounds.indices) {
+            val bmp = bridgeFullBitmap!!
+            val targetBounds = photoBounds[bridgeTargetCellIdx]
+            val tl = transformCoordBitmapToTouch(targetBounds.left, targetBounds.top)
+            val br = transformCoordBitmapToTouch(targetBounds.right, targetBounds.bottom)
+            val cellW = br.x - tl.x
+            val cellH = br.y - tl.y
+            val fillScale = maxOf(cellW / bmp.width, cellH / bmp.height)
+            val scaledW = bmp.width * fillScale
+            val scaledH = bmp.height * fillScale
+            val photoLeft = tl.x + (cellW - scaledW) / 2f
+            val photoTop = tl.y + (cellH - scaledH) / 2f
+
+            canvas.save()
+            canvas.clipRect(tl.x, tl.y, br.x, br.y)
+            canvas.drawRect(tl.x, tl.y, br.x, br.y, blackPaint)
+            canvas.drawBitmap(
+                bmp, null,
+                android.graphics.RectF(photoLeft, photoTop, photoLeft + scaledW, photoTop + scaledH),
+                photoPaint
+            )
+            canvas.restore()
+            canvas.drawRect(tl.x, tl.y, br.x, br.y, activePaint)
+        } else {
+            val halfW = (aRight.x - aLeft.x) / 2f * activeScale
+            val halfH = (aRight.y - aLeft.y) / 2f * activeScale
+            canvas.drawBitmap(
+                photoCrops[activePhotoIndex],
+                null,
+                android.graphics.Rect(
+                    (centerX - halfW).toInt(), (centerY - halfH).toInt(),
+                    (centerX + halfW).toInt(), (centerY + halfH).toInt()
+                ),
+                photoPaint
+            )
+            canvas.drawRect(
+                centerX - halfW, centerY - halfH,
+                centerX + halfW, centerY + halfH,
+                activePaint
+            )
+        }
     }
 }

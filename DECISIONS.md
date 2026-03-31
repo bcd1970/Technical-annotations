@@ -16,6 +16,74 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 
 ---
 
+## Whole-Image Editing View (Sandbox) — 2026-03-29
+
+**Goal:** Create a new editing phase where the stitched collage (or single photo) is treated as one unified image for editing, starting with crop/rotate/flip
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | New WholeImageEditView extending TouchImageView (not reusing EditableTouchImageView) | SUCCESS | EditableTouchImageView is ~700 lines of multi-photo logic; clean ~200-line view is simpler |
+| 2 | Crop logic ported from EditableTouchImageView, simplified to full-image bounds | SUCCESS | Same 8-handle + whole-rect drag pattern, constrained to (0,0,imgW,imgH) instead of photoBounds |
+| 3 | ImageEditState data class + EditTool enum for state management | SUCCESS | Flip/rotate are instant-apply; crop is overlay-then-confirm |
+| 4 | Crop confirm bakes result into sourceBitmap, resets edit state | SUCCESS | Avoids quality loss from re-applying normalized crop on each edit |
+| 5 | Android system photo picker (GetContent) instead of custom PhotoPickerScreen | FAILED | GetContent launches system picker which shows "limited access" UI on Android 14+; broke the existing flow |
+| 6 | Replacing CanvasExperiment with WholeImageEditExperiment in SandboxActivity | FAILED | Removed collage support entirely; editing view should come AFTER collage assembly, not replace it |
+| 7 | WholeImageEditScreen as overlay called from CanvasExperiment with bitmap parameter | SUCCESS | CanvasExperiment stays as entry point; Edit FAB passes backgroundBitmap to WholeImageEditScreen; onDone returns edited bitmap |
+| 8 | Pencil icon in per-photo edit toolbar instead of standalone FAB | SUCCESS | More discoverable, consistent with toolbar pattern, doesn't overlap with camera FAB |
+| 9 | Single photo → auto-enter editor | SUCCESS | Single photos go directly to WholeImageEditScreen after picking |
+| 10 | Removed LAYER_TYPE_SOFTWARE from WholeImageEditView | SUCCESS | No ColorMatrix effects needed; hardware accel makes zoom transitions smooth |
+| 11 | Swapped flipH/flipV axis in applyEditState to match icon visuals | SUCCESS | flipH = postScale(1,-1) = top-bottom; flipV = postScale(-1,1) = left-right; matches icon orientation |
+| 12 | Port to app module | SUCCESS | WholeImageEditView→ui/util, ImageEditState→data/model, applyEditState→BitmapService, WholeImageEditScreen→ui/editor, pencil icon in CanvasScreen toolbar |
+
+---
+
+## MVVM + Repository + DI Refactoring — 2026-03-29
+
+**Goal:** Establish modular architecture (MVVM, Repository, Hilt DI) in the app module before adding more features
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Extract data models to `data/model/` (PhotoTransform, CollageResult, Album, Photo, PickerView) | SUCCESS | Clean separation, no behavior change |
+| 2 | Extract BitmapService with granular reusable ops (crop, flip, rotate, decode, stitch) | SUCCESS | Any future editor can inject and call individual operations |
+| 3 | Extract MediaRepository (interface + impl) for MediaStore queries | SUCCESS | Decouples data access from UI, interface allows future swapping |
+| 4 | Wire Hilt DI with AppModule (@Binds for MediaRepository) | SUCCESS | BitmapService uses @Inject directly (concrete class, no interface needed) |
+| 5 | No domain/use-case layer | SUCCESS | Overkill for solo dev — ViewModels call repos directly |
+| 6 | No shared Android library module between app and sandbox | SUCCESS | Sandbox is ephemeral by design, shared module would add coupling |
+| 7 | PhotoTransform stays in app (not core) | SUCCESS | Uses android.graphics.RectF — can't go in pure JVM core module |
+| 8 | Create PhotoPickerViewModel with MediaRepository | SUCCESS | Manages photo/album loading + selection state |
+| 9 | Create CanvasViewModel with BitmapService | SUCCESS | Manages all canvas state, decode/stitch via combine+collect flows |
+| 10 | Permission handling stays in composable | SUCCESS | rememberLauncherForActivityResult is inherently Compose/Activity API |
+| 11 | UI navigation state (showPicker, currentView) stays in composables | SUCCESS | Pure navigation, not business logic |
+| 12 | Extract sub-composables: CollageThumbBar, LayoutSelector, AlbumGrid, PhotoGrid, PhotoPreview, SelectedPhotosStrip | SUCCESS | Each in own file, single responsibility |
+
+---
+
+## Collage Editor UI Polish & Reorder Fix — 2026-03-29
+
+**Goal:** Fix 2D grid reorder snap bug, add seamless bridge rendering, and polish editor UI
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Hide FAB camera button during edit mode | SUCCESS | Reduces clutter, add-photo available in toolbar |
+| 2 | Black background instead of surfaceVariant | SUCCESS | Matches bridge rendering, eliminates grey flash during drag |
+| 3 | Fix 2D snap: use center-to-center offset instead of top-left | SUCCESS | Bug: `currentOrder[activeDisplayIndex]` returned activePhotoIndex, offset was always (0,0) |
+| 4 | Settle animation on release (morph proportions during bridge) | FAILED | Bridge phase too short (~70ms), animation cut off by new bitmap arrival |
+| 5 | Delay onReorderComplete until morph completes | FAILED | Morph (stretch) looks different from final center-crop, visible jump at end |
+| 6 | Bridge center-crop: fetch full transformed bitmap, draw center-cropped into target cell | SUCCESS | Matches stitcher output exactly, seamless transition when new bitmap arrives |
+
+---
+
+## Active/Inactive Tool Visual Hints — 2026-03-29
+
+**Goal:** Add visual feedback to edit toolbar icons so user can see which transforms are active on the selected photo
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Use blue tint `Color(0xFF4FC3F7)` for active, white for inactive — same pattern as existing Pan toggle | SUCCESS | Consistent with existing UI, no new colors or styles needed |
+| 2 | Read `activeTransform` once at top of Row block to avoid repeated indexing | SUCCESS | Cleaner code, single source of truth for the active photo's state |
+
+---
+
 ## Phase 1 — Project Setup
 
 ### Project Structure — 2026-03-23
@@ -388,3 +456,31 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | Full rewrite of app EditableTouchImageView to match sandbox (FrameAnimator, bridge, no-op setters, LAYER_TYPE_SOFTWARE) | SUCCESS | Side-by-side verified — zero functional differences after package normalization. Both apps build and install clean |
+
+### Content-Aware Collage Layout Shapes — 2026-03-29
+
+**Goal:** Add multiple collage layout shapes (grids, split views) with content-aware suggestions based on photo count, and pan-to-adjust photo position within cells
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | CollageLayout model in :core with normalized 0-1 cells + aspectRatio flag | SUCCESS | Pure Kotlin, no Android deps. aspectRatio=0f preserves existing horizontal-row behavior. 9 unit tests pass (tiling, bounds, overlap, coverage, serialization) |
+| 2 | layoutsForCount() catalog: 2-6 hardcoded, 7+ dynamic grid generation | SUCCESS | 2 photos: 3 layouts, 3: 4 layouts, 4: 4 layouts, 5: 4 layouts, 6: 4 layouts. Always includes horizontal-row option |
+| 3 | Generalized stitchFromBitmaps with layout parameter | SUCCESS | aspectRatio==0f runs existing horizontal code path (zero regression risk). Grid layouts use center-crop with panX/panY offsets for source rect calculation |
+| 4 | PhotoTransform extended with panX/panY (default 0.5 = center) | SUCCESS | Only affects grid layouts. Horizontal-row ignores pan values |
+| 5 | 2D photoIndexAt (checks both X and Y bounds) | SUCCESS | Replaces X-only check. Works for both horizontal rows and grid cells |
+| 6 | LayoutSelector composable: horizontal row of 48dp layout previews | SUCCESS | Draws colored rectangles for cells, blue border on active layout. Visible when collage shown, hidden in crop/pan mode |
+| 7 | Pan mode following crop mode pattern (button → touch → confirm/cancel) | FAILED | Pan dragging didn't visually move the photo — only updated values without re-rendering the stitched bitmap |
+| 8 | 2D drag-to-reorder via isHorizontalLayout flag | SUCCESS | Horizontal layouts: existing 1D horizontal drag unchanged. Grid layouts: any-direction drag detection, 2D slot centers, swap when active center enters another cell's bounds |
+| 9 | Bifurcated onDraw during drag: horizontal draws in row, grid draws at cell positions | SUCCESS | Both paths share active photo rendering (follows finger with scale/dim animation). Bridge phase works for both |
+| 10 | 2D reorder bug fix: cell index vs data index | SUCCESS | updateReorderDrag2D and onDraw grid path used photoBounds[dataIdx] instead of photoBounds[cellIdx] — caused photos to jump to wrong positions after swaps. Fixed to use cell index throughout |
+| 11 | Live pan rendering via getTransformedBitmap callback | SUCCESS | On pan drag start, view requests the transformed bitmap via callback. During drag, draws the full photo clipped to cell bounds at offset position. Photo border outline (photoOutlinePaint) shows full photo edges |
+| 12 | Pan bridge: keep live render until re-stitch arrives | SUCCESS | Same pattern as reorder bridge — panBridgeActive flag prevents snap-back between drag end and new stitched bitmap. Cleared in setImageBitmap |
+| 13 | Pan behind toggle button (panEnabled flag) | SUCCESS | OpenWith icon toggles panEnabled — blue when active, white when off. When off, drag reorders. When on, drag on active cropped photo pans. Resets on edit mode exit |
+
+### Port Collage Layout Shapes to Main App — 2026-03-29
+
+**Goal:** Port all collage layout shapes, live pan, and 2D drag-to-reorder from sandbox to main app
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Full rewrite of app EditableTouchImageView and CanvasScreen to match sandbox | SUCCESS | Side-by-side diff verified — only package names and PhotoPickerScreen import differ. Both apps build and install clean |
