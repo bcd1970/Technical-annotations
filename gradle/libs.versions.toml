@@ -17,6 +17,7 @@ kotlinx-collections-immutable = "0.3.8"
 telephoto = "0.14.0"
 zoomable = "2.4.0"
 touchimageview = "3.7.1"
+gpuimage = "2.1.0"
 
 [libraries]
 # AndroidX Core
@@ -51,6 +52,7 @@ coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" 
 telephoto-zoomable-coil = { module = "me.saket.telephoto:zoomable-image-coil3", version.ref = "telephoto" }
 zoomable = { module = "net.engawapg.lib:zoomable", version.ref = "zoomable" }
 touchimageview = { module = "com.github.MikeOrtiz:TouchImageView", version.ref = "touchimageview" }
+gpuimage = { module = "jp.co.cyberagent.android:gpuimage", version.ref = "gpuimage" }
 
 # Serialization
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization-json" }

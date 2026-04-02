@@ -16,6 +16,31 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 
 ---
 
+## Guided Filter Highlight/Shadow/Sharpness Pipeline — 2026-04-01
+
+**Goal:** Replace per-pixel highlight/shadow (halos, mushy output) with professional edge-aware guided filter decomposition + improved adaptive sharpening
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Hybrid CPU + GPU approach: guided filter on CPU (one-time ~120ms), AGSL shader for real-time preview | SUCCESS | CPU computes base/detail decomposition via integral images (O(N)), packs into RGBA_F16 bitmap. Shader reads it as second texture input via `setInputShader`. Real-time slider interaction stays instant. |
+| 2 | Store base+detail+luminance in RGBA_F16 bitmap (R=base, G=detail, B=origLum) | SUCCESS | Half-float preserves signed detail values without offset tricks. `android.util.Half.toHalf()` + `copyPixelsFromBuffer()` for encoding. |
+| 3 | Tone remapping on base layer only (shadow gamma + highlight power curves with quadratic masks) | SUCCESS | Detail layer preserved = no texture loss. Chrominance preserved via RGB ratio scaling (newLum/origLum). |
+| 4 | Upgraded sharpening from 4-tap Laplacian to 9-tap Gaussian unsharp mask with tone masking | SUCCESS | Shadow protection (smoothstep < 0.15), highlight protection (> 0.9), noise gate (smoothstep 0.005–0.015). No noise amplification in darks. |
+| 5 | Added automatic film grain dithering in shadows | SUCCESS | Hash-based deterministic noise, triangular PDF, masked to lum < 0.25. Prevents banding from 8-bit quantization after shadow lift. |
+| 6 | Fallback path when baseDetailBitmap is null (during ~120ms computation) | SUCCESS | Shader checks `useBaseDetail` uniform — uses old per-pixel approach until guided filter completes, then seamlessly upgrades via LaunchedEffect recomposition. |
+| 7 | Reordered adjustment pipeline: shadows/highlights first, before brightness/WB | SUCCESS | Decomposition matches original image luminance, so tone remap must happen before other color changes. |
+| 8 | Pure Kotlin GuidedFilter in core module with DoubleArray SAT | SUCCESS | DoubleArray prevents catastrophic cancellation on large images. Unit tested with step edges, gradients, 1x1 edge cases. |
+| 9 | RenderEffect for live preview during drag | FAILED | Per-pixel fallback in RenderEffect produced different brightness than guided filter bitmap render. Visual mismatch on every drag→release transition. |
+| 10 | Bitmap-to-bitmap AGSL rendering for all slider changes (no RenderEffect) | SUCCESS | Consistent output between drag and release. `snapshotFlow + conflate()` drops intermediate values during rendering, always processes latest. ~10-20fps during drag. |
+| 11 | Highlight mask widened: `base*base` → `smoothstep(0.15, 0.6, base)` | SUCCESS | Original quadratic mask was too narrow in linear space — sRGB 0.7-0.9 maps to linear 0.4-0.8 where `base*base` gives only 16-64% strength. Wide smoothstep gives full effect on perceptual highlights. |
+| 12 | Highlight recovery formula fix: `pow(base, 1/(1+s))` → `pow(base, 1+s)` | SUCCESS | Original formula with gamma < 1 brightened highlights instead of darkening. Gamma > 1 correctly compresses toward black. |
+| 13 | Vignette removed from sandbox adjustment pipeline | SUCCESS | User requested removal. Stripped from AGSL shader, GPUImage fallback, and UI chip bar. Core model unchanged. |
+| 14 | Shadow mask narrowed: `(1-base)^2` → `smoothstep(0.15, 0.45, base)` | SUCCESS | Quadratic mask bled into midtones/highlights. Smoothstep confines shadow adjustment to dark regions only (below linear 0.45 ≈ sRGB 0.70). Strength multiplier increased to 1.0 to compensate. |
+| 15 | Highlight mask narrowed: `smoothstep(0.15, 0.6)` → `smoothstep(0.3, 0.8)` | SUCCESS | Previous mask was too wide, affecting midtones. New mask targets actual highlights (above linear 0.3 ≈ sRGB 0.58). |
+| 16 | Ported adjustment engine from sandbox to main app | SUCCESS | ImageEditState + ADJUST tool, BitmapService gains computeBaseDetailTexture/applyAdjustments/AGSL shader, new AdjustmentPanel composable, WholeImageEditScreen gains Tune button + snapshotFlow+conflate rendering. Both apps verified identical behavior. |
+
+---
+
 ## Whole-Image Editing View (Sandbox) — 2026-03-29
 
 **Goal:** Create a new editing phase where the stitched collage (or single photo) is treated as one unified image for editing, starting with crop/rotate/flip
@@ -484,3 +509,18 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 | # | Decision / Attempt | Outcome | Notes |
 |---|-------------------|---------|-------|
 | 1 | Full rewrite of app EditableTouchImageView and CanvasScreen to match sandbox | SUCCESS | Side-by-side diff verified — only package names and PhotoPickerScreen import differ. Both apps build and install clean |
+
+---
+
+## AGSL Shader — Highlights/Shadows & Sharpness Improvements — 2026-03-31
+
+**Goal:** Make highlights/shadows visibly effective and fix sharpness edge artifacts
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | Widen H/S tonal ranges (smoothstep 0→0.5 / 0.35→1.0) + increase gain to 0.8 | FAILED | Still too subtle — mask-based multiplicative gain doesn't produce visible results |
+| 2 | EV-style exponential gain (pow(2.0, x*1.5)) with same masks | FAILED | Highlights almost invisible, shadows too weak |
+| 3 | Gaussian 8-tap unsharp mask at 1.5px radius for sharpness | FAILED | Too tight on high-DPI — blur nearly identical to center, produced mushy/no-sharpening effect |
+| 4 | Same 8-tap at 2.5px radius with 5.0 gain | FAILED | Still mushy — wide radius captures structure not detail, wrong approach entirely |
+| 5 | GPUImage gamma-curve for H/S: two-term polynomial (pow(lum,1/(s+1)) - 0.76*pow(lum,2*e)) with luminance-ratio color preservation (color *= newLum/lum) | SUCCESS | Proven algorithm from GPUImage. Gamma curves naturally taper off, no hard masks. Luminance ratio preserves hue. Shadow lift and highlight compress/boost both directions |
+| 6 | 4-cardinal Laplacian sharpen at 1px offset, luma-only, halo clamp ±0.06 | SUCCESS | Same approach as GPUImageSharpenFilter. 1px offset captures fine detail at display pixel scale. Luma-only avoids color fringing. Halo clamp prevents ringing |
