@@ -14,3 +14,7 @@
 *.aab
 *.ap_
 *.dex
+
+# Local-only (copied by hand, not pushed)
+4081.video/
+.claude/settings.local.json
