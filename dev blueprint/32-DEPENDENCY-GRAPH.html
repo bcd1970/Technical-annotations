@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TechNotes — Build Order Dependency Graph</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--s1:#111;--s2:#181818;--s3:#222;--border:#2a2a2a;--text:#ddd;--dim:#888;--muted:#555;--ph1:#4a9;--ph2:#49a;--ph3:#a94;--ph4:#944}
+body{background:var(--bg);color:var(--text);font-family:'SF Mono','JetBrains Mono','Fira Code',monospace;font-size:12px;line-height:1.6;min-height:100vh}
+.header{padding:40px 48px 24px;border-bottom:1px solid var(--border)}
+.header h1{font-size:22px;font-weight:600;letter-spacing:-0.02em;margin-bottom:4px;font-family:system-ui,sans-serif}
+.header p{color:var(--dim);font-size:11px}
+.controls{padding:16px 48px;border-bottom:1px solid var(--border);display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.controls label{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:0.1em}
+.btn{padding:6px 14px;border:1px solid var(--border);background:var(--s1);color:var(--dim);font-size:10px;font-family:inherit;cursor:pointer;letter-spacing:0.05em;transition:all 0.15s}
+.btn:hover{border-color:var(--dim);color:var(--text)}
+.btn.active{border-color:var(--ph1);color:var(--ph1);background:rgba(68,170,153,0.08)}
+.btn[data-ph="2"].active{border-color:var(--ph2);color:var(--ph2);background:rgba(68,153,170,0.08)}
+.btn[data-ph="3"].active{border-color:var(--ph3);color:var(--ph3);background:rgba(170,153,68,0.08)}
+.btn[data-ph="4"].active{border-color:var(--ph4);color:var(--ph4);background:rgba(153,68,68,0.08)}
+.stats{margin-left:auto;color:var(--muted);font-size:10px}
+
+.graph{padding:32px 48px;overflow-x:auto}
+.tier{margin-bottom:24px}
+.tier-header{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+.tier-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.15em;min-width:60px}
+.tier-line{flex:1;height:1px;background:var(--border)}
+.tier-count{font-size:10px;color:var(--muted)}
+.tier-atoms{display:flex;flex-wrap:wrap;gap:6px}
+
+.atom{padding:5px 10px;border:1px solid var(--border);background:var(--s1);font-size:10px;cursor:pointer;transition:all 0.15s;position:relative;white-space:nowrap}
+.atom:hover{border-color:var(--text);z-index:10;background:var(--s2)}
+.atom .aid{color:var(--dim);margin-right:4px}
+.atom .aname{color:var(--text)}
+.atom.ph1{border-left:2px solid var(--ph1)}
+.atom.ph2{border-left:2px solid var(--ph2)}
+.atom.ph3{border-left:2px solid var(--ph3)}
+.atom.ph4{border-left:2px solid var(--ph4)}
+.atom.highlight{background:rgba(68,170,153,0.12);border-color:var(--ph1)}
+.atom.dep-highlight{background:rgba(255,200,50,0.08);border-color:#ca3}
+.atom.hidden{display:none}
+.atom.sz-s .aid::after{content:' S';color:var(--muted)}
+.atom.sz-m .aid::after{content:' M';color:var(--muted)}
+.atom.sz-l .aid::after{content:' L';color:#c80}
+
+.tooltip{position:fixed;background:var(--s2);border:1px solid var(--border);padding:12px 16px;font-size:11px;max-width:320px;z-index:100;pointer-events:none;display:none;box-shadow:0 8px 32px rgba(0,0,0,0.5)}
+.tooltip .t-id{color:var(--ph1);font-size:12px;font-weight:600;margin-bottom:4px}
+.tooltip .t-name{color:var(--text);margin-bottom:8px}
+.tooltip .t-deps{color:var(--dim);font-size:10px;margin-bottom:4px}
+.tooltip .t-deps span{color:#ca3}
+.tooltip .t-feeds{color:var(--dim);font-size:10px}
+.tooltip .t-feeds span{color:var(--ph1)}
+
+.legend{padding:16px 48px;border-top:1px solid var(--border);display:flex;gap:24px;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--dim)}
+.legend-swatch{width:14px;height:10px;border:1px solid}
+.legend-swatch.lph1{border-color:var(--ph1);border-left:2px solid var(--ph1)}
+.legend-swatch.lph2{border-color:var(--ph2);border-left:2px solid var(--ph2)}
+.legend-swatch.lph3{border-color:var(--ph3);border-left:2px solid var(--ph3)}
+.legend-swatch.lph4{border-color:var(--ph4);border-left:2px solid var(--ph4)}
+
+.footer{padding:20px 48px;border-top:1px solid var(--border);color:var(--muted);font-size:10px;display:flex;justify-content:space-between}
+</style>
+</head>
+<body>
+
+<div class="header">
+<h1>Build Order — Dependency Graph</h1>
+<p>266 atoms across 8 Phase 1 tiers + 4 Phase 2 tiers. Hover any atom to see dependencies and dependents. Click to lock highlight.</p>
+</div>
+
+<div class="controls">
+<label>Show phases:</label>
+<button class="btn active" data-ph="1" onclick="togglePhase(1)">Phase 1 (127)</button>
+<button class="btn" data-ph="2" onclick="togglePhase(2)">Phase 2 (91)</button>
+<button class="btn" data-ph="3" onclick="togglePhase(3)">Phase 3 (30)</button>
+<button class="btn" data-ph="4" onclick="togglePhase(4)">Phase 4 (13)</button>
+<div class="stats" id="stats">Showing 127 atoms</div>
+</div>
+
+<div class="graph" id="graph"></div>
+
+<div class="legend">
+<div class="legend-item"><div class="legend-swatch lph1"></div>Phase 1</div>
+<div class="legend-item"><div class="legend-swatch lph2"></div>Phase 2</div>
+<div class="legend-item"><div class="legend-swatch lph3"></div>Phase 3</div>
+<div class="legend-item"><div class="legend-swatch lph4"></div>Phase 4</div>
+<div class="legend-item" style="margin-left:24px">S = small · M = medium · <span style="color:#c80">L = large (multi-session)</span></div>
+</div>
+
+<div class="footer">
+<span>TechNotes — Document 32 · Build Order Dependency Graph</span>
+<span>April 2026 · 266 atoms · 17 areas</span>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script>
+const atoms = [
+// Phase 1 Tier 0
+{id:'DS-01',name:'Design tokens',ph:1,tier:0,sz:'m',deps:[]},
+{id:'PD-05',name:'Element sealed class hierarchy',ph:1,tier:0,sz:'m',deps:[]},
+{id:'PD-06',name:'Geometry primitives',ph:1,tier:0,sz:'s',deps:[]},
+{id:'IC-01',name:'Three-mode state machine',ph:1,tier:0,sz:'m',deps:[]},
+{id:'CC-01',name:'CameraX viewfinder',ph:1,tier:0,sz:'m',deps:[]},
+{id:'ON-01',name:'App splash',ph:1,tier:0,sz:'s',deps:[]},
+{id:'L10N-01',name:'String resource infra',ph:1,tier:0,sz:'m',deps:[]},
+// Tier 1
+{id:'DS-02',name:'Animation system',ph:1,tier:1,sz:'s',deps:['DS-01']},
+{id:'DS-03',name:'Dark-first theme',ph:1,tier:1,sz:'s',deps:['DS-01']},
+{id:'DS-04',name:'Touch targets',ph:1,tier:1,sz:'s',deps:['DS-01']},
+{id:'DS-05',name:'Icon set',ph:1,tier:1,sz:'m',deps:['DS-01']},
+{id:'DS-06',name:'Typography',ph:1,tier:1,sz:'s',deps:['DS-01']},
+{id:'PD-01',name:'Room database',ph:1,tier:1,sz:'m',deps:[]},
+{id:'PD-07',name:'Undo/redo model',ph:1,tier:1,sz:'s',deps:['PD-05']},
+{id:'CE-01',name:'EditableTouchImageView',ph:1,tier:1,sz:'l',deps:['PD-06']},
+{id:'CC-02',name:'Camera pre-warming',ph:1,tier:1,sz:'s',deps:['CC-01']},
+{id:'IC-23',name:'Haptic vocabulary',ph:1,tier:1,sz:'s',deps:['DS-01']},
+{id:'L10N-03',name:'donottranslate.xml',ph:1,tier:1,sz:'s',deps:['L10N-01']},
+{id:'L10N-05',name:'Plurals + RTL',ph:1,tier:1,sz:'s',deps:['L10N-01']},
+{id:'L10N-14',name:'Date/time formatting',ph:1,tier:1,sz:'s',deps:['L10N-01']},
+{id:'L10N-17',name:'locales_config auto-gen',ph:1,tier:1,sz:'s',deps:['L10N-01']},
+{id:'L10N-18',name:'AAB language splits',ph:1,tier:1,sz:'s',deps:['L10N-01']},
+// Tier 2
+{id:'IC-02',name:'Mode transitions',ph:1,tier:2,sz:'s',deps:['IC-01','DS-02']},
+{id:'IC-24',name:'Spring physics',ph:1,tier:2,sz:'s',deps:['DS-02']},
+{id:'CE-02',name:'viewMatrix system',ph:1,tier:2,sz:'m',deps:['CE-01']},
+{id:'CE-04',name:'GestureRouter',ph:1,tier:2,sz:'m',deps:['CE-01']},
+{id:'PD-02',name:'Project model',ph:1,tier:2,sz:'s',deps:['PD-01']},
+{id:'PD-10',name:'Settings DataStore',ph:1,tier:2,sz:'s',deps:['PD-01']},
+{id:'CE-06',name:'Rendering pipeline',ph:1,tier:2,sz:'m',deps:['CE-01','CE-02','PD-05']},
+{id:'IC-03',name:'Annotate toolbar',ph:1,tier:2,sz:'m',deps:['IC-01','DS-01']},
+{id:'IC-06',name:'Semantic ink strip',ph:1,tier:2,sz:'s',deps:['IC-01','DS-01']},
+{id:'IC-10',name:'Edit toolbar',ph:1,tier:2,sz:'m',deps:['IC-01','DS-01']},
+{id:'IC-11',name:'Browse chrome',ph:1,tier:2,sz:'s',deps:['IC-01','DS-01']},
+{id:'L10N-04',name:'ISO 7010 symbols',ph:1,tier:2,sz:'m',deps:['DS-01','L10N-01']},
+// Tier 3
+{id:'CE-03',name:'Touch-to-image coords',ph:1,tier:3,sz:'s',deps:['CE-01','CE-02','PD-06']},
+{id:'CE-05',name:'Zoom/pan handler',ph:1,tier:3,sz:'s',deps:['CE-04']},
+{id:'CE-11',name:'Canvas export',ph:1,tier:3,sz:'m',deps:['CE-06']},
+{id:'PD-03',name:'Photo model',ph:1,tier:3,sz:'m',deps:['PD-01','PD-02']},
+{id:'IC-04',name:'Tool tray',ph:1,tier:3,sz:'s',deps:['IC-03']},
+{id:'IC-05',name:'Tool persistence',ph:1,tier:3,sz:'s',deps:['IC-03','PD-10']},
+{id:'IC-07',name:'Undo/redo engine',ph:1,tier:3,sz:'m',deps:['PD-07','IC-01']},
+{id:'IC-09',name:'Chrome auto-hide',ph:1,tier:3,sz:'s',deps:['IC-01']},
+{id:'IC-12',name:'Properties sheet',ph:1,tier:3,sz:'s',deps:['IC-03']},
+{id:'IC-13',name:'Soft placement',ph:1,tier:3,sz:'s',deps:['CE-06']},
+{id:'IC-28',name:'Freq-sorted ink',ph:1,tier:3,sz:'s',deps:['IC-06','PD-10']},
+{id:'ON-04',name:'Project hub',ph:1,tier:3,sz:'m',deps:['PD-02','DS-01']},
+{id:'ON-07',name:'Settings screen',ph:1,tier:3,sz:'m',deps:['PD-10','DS-01']},
+{id:'TK-01',name:'Trade kit model',ph:1,tier:3,sz:'m',deps:['PD-01','PD-10']},
+{id:'DP-01',name:'Straight line',ph:1,tier:3,sz:'s',deps:['CE-06','PD-05']},
+{id:'DP-18',name:'Circle',ph:1,tier:3,sz:'s',deps:['CE-06','PD-05']},
+{id:'DP-23',name:'Rectangle',ph:1,tier:3,sz:'s',deps:['CE-06','PD-05']},
+{id:'DP-25',name:'Text annotation',ph:1,tier:3,sz:'m',deps:['CE-06','PD-05']},
+{id:'DP-27',name:'Diamond',ph:1,tier:3,sz:'s',deps:['CE-06','PD-05']},
+{id:'DP-28',name:'Triangle',ph:1,tier:3,sz:'s',deps:['CE-06','PD-05']},
+{id:'DP-30',name:'Freehand curve',ph:1,tier:3,sz:'m',deps:['CE-06','PD-05']},
+{id:'DP-31',name:'Hatching fill',ph:1,tier:3,sz:'m',deps:['CE-06','PD-05']},
+{id:'DP-50',name:'Pass/Fail stamps',ph:1,tier:3,sz:'m',deps:['CE-06','PD-05']},
+{id:'DP-52',name:'Numbered pins',ph:1,tier:3,sz:'m',deps:['CE-06','PD-05']},
+{id:'EP-01',name:'Flip & rotate',ph:1,tier:3,sz:'s',deps:['IC-10']},
+{id:'EP-02',name:'Crop tool',ph:1,tier:3,sz:'m',deps:['IC-10','CE-01']},
+{id:'EP-03',name:'AGSL shaders',ph:1,tier:3,sz:'m',deps:['IC-10']},
+{id:'IC-29',name:'Text no-blackout',ph:1,tier:3,sz:'m',deps:['DP-25','CE-02']},
+// Tier 4
+{id:'CE-07',name:'Hit-testing',ph:1,tier:4,sz:'m',deps:['PD-06','CE-03']},
+{id:'PD-04',name:'Annotation model',ph:1,tier:4,sz:'m',deps:['PD-01','PD-03','PD-05']},
+{id:'PD-08',name:'Evidence chain',ph:1,tier:4,sz:'s',deps:['PD-03']},
+{id:'PD-09',name:'Auto-metadata',ph:1,tier:4,sz:'m',deps:['PD-03']},
+{id:'CC-03',name:'Photo metadata',ph:1,tier:4,sz:'s',deps:['CC-01','PD-09']},
+{id:'CC-04',name:'Gallery picker',ph:1,tier:4,sz:'s',deps:['PD-03']},
+{id:'CE-09',name:'Smart labels',ph:1,tier:4,sz:'s',deps:['CE-06','PD-06']},
+{id:'CE-10',name:'Alignment guides',ph:1,tier:4,sz:'s',deps:['CE-06','PD-06']},
+{id:'DP-02',name:'Arrowhead renderer',ph:1,tier:4,sz:'m',deps:['DP-01']},
+{id:'DP-19',name:'Circle + text',ph:1,tier:4,sz:'s',deps:['DP-18','DP-25']},
+{id:'DP-24',name:'Labeled rectangle',ph:1,tier:4,sz:'s',deps:['DP-23','DP-25']},
+{id:'DP-32',name:'Revision cloud',ph:1,tier:4,sz:'m',deps:['DP-30']},
+{id:'DP-63',name:'Polyline',ph:1,tier:4,sz:'m',deps:['CE-06','PD-05','CE-03']},
+{id:'DP-51',name:'Defect markers',ph:1,tier:4,sz:'s',deps:['DP-50']},
+{id:'IC-08',name:'Undo pill',ph:1,tier:4,sz:'s',deps:['IC-07','DS-01']},
+{id:'IC-22',name:'Back-tap undo',ph:1,tier:4,sz:'s',deps:['IC-07']},
+{id:'IC-21',name:'Color as gesture',ph:1,tier:4,sz:'s',deps:['IC-06','CE-04']},
+{id:'IC-27',name:'Swipe-between-photos',ph:1,tier:4,sz:'m',deps:['IC-01','IC-05','CE-04']},
+{id:'TK-02',name:'Kit activation',ph:1,tier:4,sz:'m',deps:['TK-01','IC-03']},
+{id:'TK-04',name:'Kit↔tool resolver',ph:1,tier:4,sz:'s',deps:['TK-01','PD-05']},
+{id:'TK-06',name:'Kit catalog UI',ph:1,tier:4,sz:'m',deps:['TK-01','DS-01']},
+{id:'TK-11',name:'Kit semantic colors',ph:1,tier:4,sz:'s',deps:['TK-01','IC-06']},
+{id:'ON-05',name:'Project creation',ph:1,tier:4,sz:'s',deps:['ON-04','PD-02']},
+{id:'ON-08',name:'Warm launch',ph:1,tier:4,sz:'s',deps:['ON-04','IC-01']},
+{id:'IC-26',name:'Quick-label dict',ph:1,tier:4,sz:'m',deps:['DP-25','PD-01']},
+{id:'L10N-02',name:'Locale switching',ph:1,tier:4,sz:'s',deps:['L10N-01','ON-07']},
+{id:'VO-06',name:'Eng. autocomplete',ph:1,tier:4,sz:'m',deps:['PD-01','DP-25']},
+{id:'DP-62',name:'Snap-to-close',ph:1,tier:4,sz:'s',deps:['DP-30','CE-03','IC-23']},
+{id:'DP-56',name:'Metadata overlay',ph:1,tier:4,sz:'m',deps:['CE-06','PD-09']},
+// Tier 5
+{id:'CE-08',name:'Selection handles',ph:1,tier:5,sz:'m',deps:['CE-07']},
+{id:'DP-03',name:'Arrow (single)',ph:1,tier:5,sz:'s',deps:['DP-01','DP-02']},
+{id:'DP-04',name:'Arrow (double)',ph:1,tier:5,sz:'s',deps:['DP-01','DP-02']},
+{id:'DP-05',name:'Leader + text',ph:1,tier:5,sz:'m',deps:['DP-01','DP-02','DP-25']},
+{id:'DP-13',name:'Dimension line',ph:1,tier:5,sz:'m',deps:['DP-01','DP-02']},
+{id:'DP-64',name:'Polygon',ph:1,tier:5,sz:'s',deps:['DP-63']},
+{id:'PD-14',name:'Annotation provenance',ph:1,tier:5,sz:'s',deps:['PD-04']},
+{id:'IC-14',name:'Smart Paper',ph:1,tier:5,sz:'l',deps:['DP-30','DP-18','DP-23','DP-03']},
+{id:'IC-30',name:'Photo-aware labels',ph:1,tier:5,sz:'s',deps:['CE-09']},
+{id:'CL-01',name:'Collage engine',ph:1,tier:5,sz:'l',deps:['CE-01','PD-03']},
+{id:'EX-01',name:'Burned-in JPEG',ph:1,tier:5,sz:'m',deps:['CE-11','PD-04']},
+{id:'EX-02',name:'Sidecar JSON',ph:1,tier:5,sz:'m',deps:['PD-04','PD-05']},
+{id:'TK-03',name:'Five launch kits',ph:1,tier:5,sz:'l',deps:['TK-01','TK-02']},
+{id:'ON-02',name:'Onboarding',ph:1,tier:5,sz:'m',deps:['ON-01','TK-01']},
+{id:'AI-01',name:'Shape recognition',ph:1,tier:5,sz:'l',deps:['DP-30','IC-14']},
+// Tier 6
+{id:'DP-14',name:'Angular dimension',ph:1,tier:6,sz:'m',deps:['DP-13']},
+{id:'DP-53',name:'Flow arrows',ph:1,tier:6,sz:'s',deps:['DP-03']},
+{id:'IC-20',name:'Draw=Annotate',ph:1,tier:6,sz:'s',deps:['IC-01','IC-14']},
+{id:'EX-03',name:'Metadata bar burn-in',ph:1,tier:6,sz:'s',deps:['EX-01','PD-09']},
+{id:'EX-05',name:'Share Sheet',ph:1,tier:6,sz:'s',deps:['EX-01','EX-02']},
+{id:'EX-10',name:'Collage export',ph:1,tier:6,sz:'m',deps:['CL-01','EX-01']},
+{id:'IL-02',name:'Annotation Envelope',ph:1,tier:6,sz:'m',deps:['EX-02','PD-05']},
+{id:'CL-02',name:'Before/After',ph:1,tier:6,sz:'s',deps:['CL-01']},
+{id:'CL-03',name:'Forensic 3-Shot',ph:1,tier:6,sz:'s',deps:['CL-01']},
+{id:'CL-04',name:'Quad View',ph:1,tier:6,sz:'s',deps:['CL-01']},
+{id:'CL-05',name:'Process Sequence',ph:1,tier:6,sz:'s',deps:['CL-01']},
+{id:'CL-06',name:'Hero+Details',ph:1,tier:6,sz:'s',deps:['CL-01']},
+{id:'CL-07',name:'Cell zoom/pan/swap',ph:1,tier:6,sz:'m',deps:['CL-01','CE-05']},
+{id:'CL-08',name:'Metadata bar/cell',ph:1,tier:6,sz:'s',deps:['CL-01','PD-09']},
+{id:'CL-14',name:'Semantic borders',ph:1,tier:6,sz:'s',deps:['CL-01','IC-06']},
+{id:'CL-15',name:'Border drag resize',ph:1,tier:6,sz:'m',deps:['CL-01']},
+{id:'ON-03',name:'Work question UI',ph:1,tier:6,sz:'s',deps:['ON-02']},
+{id:'EX-04',name:'PDF report',ph:1,tier:6,sz:'l',deps:['EX-01','PD-02']},
+// Tier 7
+{id:'IL-01',name:'Share Sheet L1',ph:1,tier:7,sz:'s',deps:['EX-01','EX-05']},
+{id:'ON-10',name:'Completion ritual',ph:1,tier:7,sz:'m',deps:['IC-01','EX-01']},
+{id:'IC-33',name:'Micro-share',ph:1,tier:7,sz:'s',deps:['EX-05','ON-10']},
+{id:'IC-32',name:'Safety bar',ph:1,tier:7,sz:'s',deps:['PD-04','EX-01']},
+];
+
+// Build lookup
+const atomMap = {};
+atoms.forEach(a => atomMap[a.id] = a);
+
+// Compute dependents
+atoms.forEach(a => a.feeds = []);
+atoms.forEach(a => {
+  a.deps.forEach(d => {
+    if(atomMap[d]) atomMap[d].feeds.push(a.id);
+  });
+});
+
+// Active phases
+const activePhases = new Set([1]);
+
+function togglePhase(ph) {
+  const btn = document.querySelector(`[data-ph="${ph}"]`);
+  if(activePhases.has(ph)) { activePhases.delete(ph); btn.classList.remove('active'); }
+  else { activePhases.add(ph); btn.classList.add('active'); }
+  render();
+}
+
+function render() {
+  const visible = atoms.filter(a => activePhases.has(a.ph));
+  const tiers = {};
+  visible.forEach(a => {
+    const key = a.ph === 1 ? `T${a.tier}` : `P${a.ph}-${a.tier}`;
+    if(!tiers[key]) tiers[key] = {label: a.ph === 1 ? `Tier ${a.tier}` : `Phase ${a.ph} · Tier ${a.tier}`, atoms: []};
+    tiers[key].atoms.push(a);
+  });
+
+  let html = '';
+  Object.entries(tiers).sort(([a],[b]) => {
+    const pa = parseInt(a.match(/\d+/)[0]), pb = parseInt(b.match(/\d+/)[0]);
+    if(a.startsWith('T') && b.startsWith('T')) return pa - pb;
+    if(a.startsWith('T')) return -1;
+    if(b.startsWith('T')) return 1;
+    return a.localeCompare(b);
+  }).forEach(([key, tier]) => {
+    html += `<div class="tier"><div class="tier-header"><span class="tier-label">${tier.label}</span><div class="tier-line"></div><span class="tier-count">${tier.atoms.length} atoms</span></div><div class="tier-atoms">`;
+    tier.atoms.forEach(a => {
+      html += `<div class="atom ph${a.ph} sz-${a.sz}" data-id="${a.id}" onmouseenter="showTip(event,'${a.id}')" onmouseleave="hideTip()" onclick="lockAtom('${a.id}')"><span class="aid">${a.id}</span><span class="aname">${a.name}</span></div>`;
+    });
+    html += '</div></div>';
+  });
+
+  document.getElementById('graph').innerHTML = html;
+  document.getElementById('stats').textContent = `Showing ${visible.length} atoms`;
+}
+
+let locked = null;
+function lockAtom(id) {
+  if(locked === id) { locked = null; clearHighlights(); return; }
+  locked = id;
+  highlightDeps(id);
+}
+
+function highlightDeps(id) {
+  clearHighlights();
+  const a = atomMap[id];
+  if(!a) return;
+  document.querySelector(`[data-id="${id}"]`)?.classList.add('highlight');
+  a.deps.forEach(d => document.querySelector(`[data-id="${d}"]`)?.classList.add('dep-highlight'));
+  a.feeds.forEach(f => document.querySelector(`[data-id="${f}"]`)?.classList.add('highlight'));
+}
+
+function clearHighlights() {
+  document.querySelectorAll('.atom').forEach(el => { el.classList.remove('highlight','dep-highlight'); });
+}
+
+const tip = document.getElementById('tooltip');
+function showTip(e, id) {
+  const a = atomMap[id];
+  if(!a) return;
+  const depStr = a.deps.length ? a.deps.map(d => `<span>${d}</span>`).join(', ') : 'none';
+  const feedStr = a.feeds.length ? a.feeds.map(f => `<span>${f}</span>`).join(', ') : 'none';
+  tip.innerHTML = `<div class="t-id">${a.id}</div><div class="t-name">${a.name}</div><div class="t-deps">← Depends on: ${depStr}</div><div class="t-feeds">→ Feeds into: ${feedStr}</div>`;
+  tip.style.display = 'block';
+  tip.style.left = Math.min(e.clientX + 12, window.innerWidth - 340) + 'px';
+  tip.style.top = Math.min(e.clientY + 12, window.innerHeight - 120) + 'px';
+  if(!locked) highlightDeps(id);
+}
+
+function hideTip() {
+  tip.style.display = 'none';
+  if(!locked) clearHighlights();
+}
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,2 @@
+-keep,allowobfuscation,allowshrinking class com.bcd.technotes.feature.canvas.CanvasViewModel
+-keep,allowobfuscation,allowshrinking class com.bcd.technotes.feature.canvas.CanvasViewModel

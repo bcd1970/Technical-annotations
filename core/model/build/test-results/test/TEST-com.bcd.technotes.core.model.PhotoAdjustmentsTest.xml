@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bcd.technotes.core.model.PhotoAdjustmentsTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-04-02T20:47:15" hostname="fedora" time="0.004">
+  <properties/>
+  <testcase name="getValue returns correct field for each type" classname="com.bcd.technotes.core.model.PhotoAdjustmentsTest" time="0.001"/>
+  <testcase name="AdjustmentType ranges are correct" classname="com.bcd.technotes.core.model.PhotoAdjustmentsTest" time="0.001"/>
+  <testcase name="withValue sets correct field for each type" classname="com.bcd.technotes.core.model.PhotoAdjustmentsTest" time="0.0"/>
+  <testcase name="isDefault returns true for default instance" classname="com.bcd.technotes.core.model.PhotoAdjustmentsTest" time="0.0"/>
+  <testcase name="serialization of default produces valid json" classname="com.bcd.technotes.core.model.PhotoAdjustmentsTest" time="0.001"/>
+  <testcase name="AdjustmentType entries cover all nine adjustments" classname="com.bcd.technotes.core.model.PhotoAdjustmentsTest" time="0.0"/>
+  <testcase name="isDefault returns false when any field is non-zero" classname="com.bcd.technotes.core.model.PhotoAdjustmentsTest" time="0.0"/>
+  <testcase name="serialization round-trip preserves values" classname="com.bcd.technotes.core.model.PhotoAdjustmentsTest" time="0.0"/>
+  <testcase name="default adjustments have all zeros" classname="com.bcd.technotes.core.model.PhotoAdjustmentsTest" time="0.001"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

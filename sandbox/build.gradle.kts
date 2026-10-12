@@ -9,14 +9,14 @@ plugins {
 
 android {
     namespace = "com.bcd.technotes.sandbox"
-    compileSdk = 36
+    compileSdk = AppConfig.COMPILE_SDK
 
     defaultConfig {
         applicationId = "com.bcd.technotes.sandbox"
-        minSdk = 29
-        targetSdk = 36
+        minSdk = AppConfig.MIN_SDK
+        targetSdk = AppConfig.TARGET_SDK
         versionCode = 1
-        versionName = "0.1.0"
+        versionName = "1.0-sandbox"
     }
 
     buildTypes {
@@ -35,7 +35,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "21"
+        jvmTarget = AppConfig.JVM_TARGET
     }
 
     buildFeatures {
@@ -45,7 +45,14 @@ android {
 }
 
 dependencies {
-    implementation(project(":core"))
+    // Core modules ONLY — sandbox has its own throwaway UI
+    implementation(project(":core:model"))
+    implementation(project(":core:ui"))
+    implementation(project(":core:drawing"))
+    implementation(project(":core:image"))
+    implementation(project(":core:project"))
+    implementation(project(":core:overlay"))
+    implementation(project(":core:undo"))
 
     // AndroidX Core
     implementation(libs.core.ktx)
@@ -60,24 +67,17 @@ dependencies {
     implementation(libs.compose.material.icons.extended)
     debugImplementation(libs.compose.ui.tooling)
 
-    // Navigation
-    implementation(libs.navigation.compose)
-    implementation(libs.kotlinx.serialization.json)
-
     // Lifecycle
-    implementation(libs.lifecycle.runtime.compose)
     implementation(libs.lifecycle.viewmodel.compose)
 
     // Hilt
     implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
+    ksp(libs.hilt.compiler)
 
-    // Image Loading
-    implementation(libs.coil.compose)
-    implementation(libs.telephoto.zoomable.coil)
-    implementation(libs.zoomable)
+    // Image
     implementation(libs.touchimageview)
+    implementation(libs.coil.compose)
     implementation(libs.gpuimage)
 
     // Immutable Collections
@@ -85,4 +85,7 @@ dependencies {
 
     // Logging
     implementation(libs.timber)
+
+    // Debug
+    debugImplementation(libs.leakcanary)
 }

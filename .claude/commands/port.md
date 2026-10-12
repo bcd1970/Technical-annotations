@@ -4,21 +4,40 @@ Complete session wrap-up workflow. Run this when done working in the sandbox, or
 
 ## Architecture Mapping
 
-The sandbox uses monolithic composables. The app uses MVVM + Repository + Hilt DI. When porting, sandbox code must be routed to the correct architectural layer:
+The sandbox uses monolithic composables. The app uses multi-module MVVM + Repository + Hilt DI. When porting, sandbox code must be routed to the correct module and layer:
 
-| Sandbox Source | App Target(s) |
-|---|---|
-| `CanvasExperiment.kt` — data classes | `data/model/` (PhotoTransform, CollageResult, etc.) |
-| `CanvasExperiment.kt` — decode/transform/stitch functions | `data/service/BitmapService.kt` |
-| `CanvasExperiment.kt` — state variables + LaunchedEffects | `viewmodel/CanvasViewModel.kt` |
-| `CanvasExperiment.kt` — UI composables (thumbbar, layout selector, command bars) | `ui/canvas/` (CanvasScreen.kt + sub-composable files) |
-| `PhotoPickerScreen.kt` — data classes | `data/model/PickerModels.kt` |
-| `PhotoPickerScreen.kt` — MediaStore query functions | `data/repository/MediaRepositoryImpl.kt` |
-| `PhotoPickerScreen.kt` — selection/loading state | `viewmodel/PhotoPickerViewModel.kt` |
-| `PhotoPickerScreen.kt` — UI composables (grids, preview, strip) | `ui/photo/` (individual files: AlbumGrid, PhotoGrid, PhotoPreview, SelectedPhotosStrip) |
-| `EditableTouchImageView.kt` | `ui/util/EditableTouchImageView.kt` (1:1 copy) |
-| `TouchImageViewExt.kt` | `ui/util/TouchImageViewExt.kt` (1:1 copy) |
-| `sandbox/build.gradle.kts` — new dependencies | `app/build.gradle.kts` |
+| Change Type | Target Module | Target Package |
+|---|---|---|
+| Data classes, sealed classes, enums | :core:model | com.bcd.technotes.core.model |
+| Theme tokens, colors, typography, spacing | :core:ui | com.bcd.technotes.core.ui.theme |
+| Shared composables (buttons, chips, sliders, toggles) | :core:ui | com.bcd.technotes.core.ui.components |
+| Drawing algorithms, snap, smoothing | :core:drawing | com.bcd.technotes.core.drawing |
+| Bitmap operations, image processing | :core:image | com.bcd.technotes.core.image |
+| Project persistence, auto-save | :core:project | com.bcd.technotes.core.project |
+| Overlay engine, masks, blends | :core:overlay | com.bcd.technotes.core.overlay |
+| Undo/redo logic | :core:undo | com.bcd.technotes.core.undo |
+| Canvas UI, canvas ViewModel | :feature:canvas | com.bcd.technotes.feature.canvas |
+| Photo picker UI, picker ViewModel | :feature:picker | com.bcd.technotes.feature.picker |
+| Image editor UI, editor ViewModel | :feature:editor | com.bcd.technotes.feature.editor |
+| Export UI, export ViewModel | :feature:export | com.bcd.technotes.feature.export |
+| Navigation routes, DI bindings | :app | com.bcd.technotes |
+| EditableTouchImageView | :feature:canvas | 1:1 copy with package rename |
+| New dependencies | Update version catalog + relevant module build.gradle.kts |
+
+### Resource Externalization — Porting Rule
+
+During porting, all UI values MUST reference the design system:
+
+```kotlin
+// WRONG (sandbox-style — hardcoded values)
+Modifier.padding(16.dp)
+Color(0xFF6200EE)
+
+// RIGHT (production-style — design system tokens)
+Modifier.padding(TechNotesTheme.spacing.lg)
+MaterialTheme.colorScheme.primary
+TechNotesTheme.extendedColors.canvas
+```
 
 ## Step 1: Assess session state
 
@@ -32,15 +51,15 @@ If there are no changes (clean working tree, sandbox and app already in sync), t
 
 Read all changed sandbox Kotlin files. For each change, classify it using the architecture mapping above:
 
-- **New data classes** → route to `data/model/`
-- **New/changed image processing functions** → route to `data/service/BitmapService.kt` (add as new methods)
-- **New/changed state variables or reactive logic** → route to `viewmodel/CanvasViewModel.kt` or `PhotoPickerViewModel.kt` (add StateFlows + action methods)
-- **New/changed UI composables** → route to the appropriate `ui/` file (create new file if it's a new composable)
-- **New/changed data queries** → route to `data/repository/MediaRepositoryImpl.kt` (add to interface + impl)
-- **EditableTouchImageView changes** → 1:1 copy with package rename
+- **New data classes** → route to :core:model
+- **New/changed image processing functions** → route to :core:image
+- **New/changed state variables or reactive logic** → route to the appropriate :feature:* ViewModel
+- **New/changed UI composables** → route to the appropriate :feature:* module
+- **New/changed data queries** → route to :feature:picker (MediaRepository)
+- **EditableTouchImageView changes** → 1:1 copy to :feature:canvas with package rename
 - **New sandbox files with no app counterpart** → flag and create following the architecture pattern
 
-Also check for new dependencies in `sandbox/build.gradle.kts` that need adding to `app/build.gradle.kts`.
+Also check for new dependencies in `sandbox/build.gradle.kts` that need adding to the relevant module's `build.gradle.kts`.
 
 ## Step 3: Side-by-side diff
 
@@ -57,15 +76,15 @@ Report the differences to the user before proceeding.
 
 ## Step 4: Apply changes
 
-For each difference found, apply it to the correct app layer:
+For each difference found, apply it to the correct module and layer:
 
-1. **Data models**: Add/update classes in `data/model/`
-2. **Services**: Add/update methods in `BitmapService.kt` (keep granular — individual ops should be callable independently)
-3. **Repository**: Add/update methods in `MediaRepository.kt` (interface) + `MediaRepositoryImpl.kt`
+1. **Core models**: Add/update classes in :core:model
+2. **Image services**: Add/update methods in :core:image BitmapService.kt
+3. **Repository**: Add/update methods in :feature:picker MediaRepository interface + impl
 4. **ViewModels**: Add StateFlows for new state, add action methods for new behaviors. Convert `LaunchedEffect` triggers to `viewModelScope.launch` with `combine`/`collect`.
-5. **UI composables**: Update existing composable files or create new ones. Composables should read ViewModel state via `collectAsState()` and call ViewModel actions. Permission handling and navigation state stay in composables.
-6. **Hilt**: If new services/repos were added, update `di/AppModule.kt`
-7. **1:1 files** (EditableTouchImageView, TouchImageViewExt): Copy with package rename
+5. **UI composables**: Update existing composable files or create new ones in :feature:*. Composables should read ViewModel state via `collectAsState()` and call ViewModel actions.
+6. **Hilt**: If new services/repos were added, update :app `di/AppModule.kt`
+7. **1:1 files** (EditableTouchImageView, TouchImageViewExt): Copy to :feature:canvas with package rename
 
 Do NOT change the sandbox files.
 

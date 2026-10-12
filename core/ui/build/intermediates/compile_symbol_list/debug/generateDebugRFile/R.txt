@@ -1,0 +1,6 @@
+int font ibm_plex_mono_medium 0x0
+int font ibm_plex_mono_regular 0x0
+int font ibm_plex_mono_semibold 0x0
+int font plus_jakarta_sans_medium 0x0
+int font plus_jakarta_sans_regular 0x0
+int font plus_jakarta_sans_semibold 0x0

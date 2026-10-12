@@ -1,0 +1,2 @@
+-keep,allowobfuscation,allowshrinking class com.bcd.technotes.feature.picker.PhotoPickerViewModel
+-keep,allowobfuscation,allowshrinking class com.bcd.technotes.feature.picker.PhotoPickerViewModel

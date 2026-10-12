@@ -17,8 +17,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import com.bcd.technotes.ui.canvas.CanvasScreen
-import com.bcd.technotes.ui.theme.TechNotesTheme
+import com.bcd.technotes.core.ui.theme.TechNotesTheme
+import com.bcd.technotes.navigation.AppNavigation
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        CanvasScreen()
+                        AppNavigation()
                         Text(
                             text = "Main App",
                             style = MaterialTheme.typography.labelSmall,

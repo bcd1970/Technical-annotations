@@ -9,14 +9,14 @@ plugins {
 
 android {
     namespace = "com.bcd.technotes"
-    compileSdk = 36
+    compileSdk = AppConfig.COMPILE_SDK
 
     defaultConfig {
-        applicationId = "com.bcd.technotes"
-        minSdk = 29
-        targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        applicationId = AppConfig.APPLICATION_ID
+        minSdk = AppConfig.MIN_SDK
+        targetSdk = AppConfig.TARGET_SDK
+        versionCode = AppConfig.VERSION_CODE
+        versionName = AppConfig.VERSION_NAME
     }
 
     buildTypes {
@@ -36,7 +36,7 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = "21"
+        jvmTarget = AppConfig.JVM_TARGET
     }
 
     buildFeatures {
@@ -46,7 +46,20 @@ android {
 }
 
 dependencies {
-    implementation(project(":core"))
+    // Feature modules
+    implementation(project(":feature:canvas"))
+    implementation(project(":feature:picker"))
+    implementation(project(":feature:editor"))
+    implementation(project(":feature:export"))
+
+    // Core modules
+    implementation(project(":core:model"))
+    implementation(project(":core:ui"))
+    implementation(project(":core:drawing"))
+    implementation(project(":core:image"))
+    implementation(project(":core:project"))
+    implementation(project(":core:overlay"))
+    implementation(project(":core:undo"))
 
     // AndroidX Core
     implementation(libs.core.ktx)
@@ -73,15 +86,6 @@ dependencies {
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
     implementation(libs.hilt.navigation.compose)
-
-    // Image Loading
-    implementation(libs.coil.compose)
-    implementation(libs.telephoto.zoomable.coil)
-    implementation(libs.touchimageview)
-    implementation(libs.gpuimage)
-
-    // Immutable Collections
-    implementation(libs.kotlinx.collections.immutable)
 
     // Logging
     implementation(libs.timber)

@@ -63,9 +63,9 @@ import com.bcd.technotes.core.model.AdjustmentType
 import com.bcd.technotes.core.model.PhotoAdjustments
 import com.bcd.technotes.core.model.getValue
 import com.bcd.technotes.core.model.withValue
-import com.bcd.technotes.core.processing.GuidedFilter
-import com.bcd.technotes.core.processing.extractLuminance
-import com.bcd.technotes.core.processing.srgbToLinear
+import com.bcd.technotes.core.image.processing.GuidedFilter
+import com.bcd.technotes.core.image.processing.extractLuminance
+import com.bcd.technotes.core.image.processing.srgbToLinear
 import com.bcd.technotes.sandbox.util.WholeImageEditView
 import com.bcd.technotes.sandbox.util.updateDoubleTapScale
 import jp.co.cyberagent.android.gpuimage.GPUImage

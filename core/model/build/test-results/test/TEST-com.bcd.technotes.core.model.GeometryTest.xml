@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bcd.technotes.core.model.GeometryTest" tests="7" skipped="0" failures="0" errors="0" timestamp="2026-04-02T20:47:15" hostname="fedora" time="0.002">
+  <properties/>
+  <testcase name="PointF distanceTo computes correct euclidean distance" classname="com.bcd.technotes.core.model.GeometryTest" time="0.001"/>
+  <testcase name="RectF properties compute correctly" classname="com.bcd.technotes.core.model.GeometryTest" time="0.0"/>
+  <testcase name="RectF fromCenterAndSize creates correct rect" classname="com.bcd.technotes.core.model.GeometryTest" time="0.001"/>
+  <testcase name="RectF intersects another rect" classname="com.bcd.technotes.core.model.GeometryTest" time="0.0"/>
+  <testcase name="RectF fromPoints handles any point order" classname="com.bcd.technotes.core.model.GeometryTest" time="0.0"/>
+  <testcase name="PointF arithmetic operators work correctly" classname="com.bcd.technotes.core.model.GeometryTest" time="0.0"/>
+  <testcase name="RectF contains point" classname="com.bcd.technotes.core.model.GeometryTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>M01 — Home navigation · TechNotes</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --space-xs: 4px; --space-sm: 8px; --space-md: 12px;
+      --space-lg: 16px; --space-xl: 24px;
+      --radius-sm: 6px; --radius-md: 8px; --radius-lg: 14px;
+      --radius-xl: 16px; --radius-pill: 999px;
+      --font-ui: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+      --tab-anim: 220ms cubic-bezier(0.4, 0, 0.2, 1);
+      --noise-url: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.55 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+    }
+    [data-theme="dark"] {
+      --canvas: #050505;
+      --bg: #0a0a0a;
+      --surface-1: #111111;
+      --surface-2: #161616;
+      --surface-3: #1e1e1e;
+      --border: #232323;
+      --border-strong: #2e2e2e;
+      --text-1: #f4f4f4;
+      --text-2: #a8a8a8;
+      --text-3: #6a6a6a;
+      --text-4: #404040;
+      --shutter-fill: #f0f0f0;
+      --shutter-icon: #0a0a0a;
+      --shutter-shadow: 0 6px 20px rgba(0,0,0,0.55), 0 0 0 6px var(--bg);
+      --photo-vignette: rgba(0,0,0,0.32);
+    }
+    [data-theme="light"] {
+      --canvas: #d6d6d6;
+      --bg: #f7f7f7;
+      --surface-1: #ffffff;
+      --surface-2: #fafafa;
+      --surface-3: #efefef;
+      --border: #e6e6e6;
+      --border-strong: #d2d2d2;
+      --text-1: #0e0e0e;
+      --text-2: #5c5c5c;
+      --text-3: #8c8c8c;
+      --text-4: #b8b8b8;
+      --shutter-fill: #0e0e0e;
+      --shutter-icon: #f8f8f8;
+      --shutter-shadow: 0 4px 14px rgba(0,0,0,0.18), 0 0 0 6px var(--bg);
+      --photo-vignette: rgba(0,0,0,0.20);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body { height: 100%; overflow: hidden; font-family: var(--font-ui); }
+    body {
+      background: var(--canvas);
+      color: var(--text-1);
+      display: flex; align-items: center; justify-content: center;
+      letter-spacing: -0.005em;
+    }
+
+    /* Theme toggle */
+    .theme-toggle {
+      position: fixed;
+      top: 18px; right: 18px;
+      z-index: 1000;
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      background: var(--surface-1);
+      border: 1px solid var(--border);
+      color: var(--text-1);
+      display: grid; place-items: center;
+      cursor: pointer; user-select: none;
+      font-size: 14px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.20);
+      transition: transform 120ms ease;
+    }
+    .theme-toggle:active { transform: scale(0.92); }
+
+    /* Phone bezel — visible frame around the screen on desktop */
+    .device {
+      position: relative;
+      width: 440px;
+      height: 944px;
+      max-width: 100vw;
+      max-height: 100vh;
+      padding: 14px;
+      background: #060606;
+      border-radius: 56px;
+      box-shadow:
+        0 0 0 1px #1a1a1a,
+        0 0 0 2px #060606,
+        0 26px 60px rgba(0,0,0,0.6),
+        0 8px 20px rgba(0,0,0,0.4),
+        inset 0 0 0 1px rgba(255,255,255,0.04);
+      display: flex; align-items: center; justify-content: center;
+    }
+    /* Side buttons hinted on the bezel */
+    .device::before, .device::after {
+      content: '';
+      position: absolute;
+      left: -2px;
+      background: #1a1a1a;
+      border-radius: 2px 0 0 2px;
+    }
+    .device::before { top: 140px; width: 3px; height: 84px; }
+    .device::after  { top: 250px; width: 3px; height: 56px; }
+    .device .pwr {
+      position: absolute;
+      right: -2px;
+      top: 200px;
+      width: 3px; height: 64px;
+      background: #1a1a1a;
+      border-radius: 0 2px 2px 0;
+    }
+
+    .phone {
+      position: relative;
+      width: 412px; height: 915px;
+      background: var(--bg);
+      overflow: hidden;
+      display: flex; flex-direction: column;
+      border-radius: 42px;
+      isolation: isolate;
+    }
+    @media (max-width: 480px), (max-height: 980px) {
+      .device {
+        width: 100vw; height: 100vh;
+        padding: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .device::before, .device::after, .device .pwr { display: none; }
+      .phone { width: 100%; height: 100%; border-radius: 0; }
+    }
+
+    /* === Status bar === */
+    .status-bar {
+      height: 36px; flex-shrink: 0;
+      padding: 0 22px 0 26px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 13px; font-weight: 600;
+      color: var(--text-1);
+      letter-spacing: -0.2px;
+    }
+    .status-right { display: flex; align-items: center; gap: 6px; }
+    .status-right svg { display: block; }
+
+    /* === Brand bar === */
+    .brand-bar {
+      height: 56px; flex-shrink: 0;
+      padding: 0 var(--space-md) 0 var(--space-lg);
+      display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .brand-left { display: flex; align-items: center; gap: 12px; }
+    .logomark {
+      width: 28px; height: 28px;
+      border-radius: 7px;
+      background: var(--text-1);
+    }
+    .brand-date {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      letter-spacing: 1.6px;
+      font-weight: 600;
+      color: var(--text-2);
+      text-transform: uppercase;
+    }
+    .counter {
+      display: flex; align-items: baseline; gap: 6px;
+      font-family: var(--font-mono);
+    }
+    .counter .big {
+      color: var(--text-1);
+      font-weight: 600;
+      font-size: 16px;
+      letter-spacing: -0.3px;
+      line-height: 1;
+    }
+    .counter .sep {
+      color: var(--text-4);
+      font-size: 12px;
+      line-height: 1;
+    }
+    .counter .label {
+      color: var(--text-3);
+      font-size: 10px;
+      letter-spacing: 1.4px;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .brand-right { display: flex; align-items: center; gap: 2px; }
+    .icon-btn {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      color: var(--text-1);
+      cursor: pointer;
+      transition: background 140ms ease, transform 100ms ease;
+    }
+    .icon-btn:active { background: var(--surface-2); transform: scale(0.94); }
+    .icon-btn svg { display: block; }
+
+    /* === Body / tab views === */
+    .body {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .tab-view {
+      position: absolute; inset: 0;
+      overflow-y: auto; overflow-x: hidden;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity var(--tab-anim);
+      scrollbar-width: none;
+      padding-bottom: 16px;
+    }
+    .tab-view::-webkit-scrollbar { display: none; }
+    .tab-view.active { opacity: 1; pointer-events: auto; }
+
+    /* === Section header (Recents) — sticky visual divider === */
+    .section-header {
+      position: sticky;
+      top: 0;
+      z-index: 6;
+      padding: 14px var(--space-lg) 12px;
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      letter-spacing: 1.6px;
+      color: var(--text-2);
+      text-transform: uppercase;
+      display: flex; align-items: center; gap: 10px;
+      font-weight: 600;
+      background: var(--bg);
+      border-bottom: 1px solid transparent;
+      transition: border-color 160ms ease;
+    }
+    .section-header.stuck { border-bottom-color: var(--border); }
+    .section-header .rule { flex: 1; height: 1px; background: var(--border); }
+    .section-header .count {
+      color: var(--text-3);
+      font-weight: 500;
+      letter-spacing: 0.4px;
+    }
+
+    /* === Photo grid === */
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      padding: 0 2px;
+    }
+    .photo {
+      aspect-ratio: 1;
+      position: relative;
+      overflow: hidden;
+      background: var(--surface-2);
+      cursor: pointer;
+      transition: transform 140ms cubic-bezier(0.4, 0, 0.2, 1), opacity 140ms ease;
+    }
+    .photo:active {
+      transform: scale(0.93);
+      opacity: 0.62;
+    }
+    .photo::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: var(--noise-url);
+      background-size: 90px 90px;
+      opacity: 0.18;
+      mix-blend-mode: overlay;
+      pointer-events: none;
+      z-index: 1;
+    }
+    .photo::after {
+      content: '';
+      position: absolute; inset: 0;
+      box-shadow: inset 0 0 36px var(--photo-vignette);
+      pointer-events: none;
+      z-index: 2;
+    }
+    /* Layered grayscale gradients — each suggests a distinct scene */
+    .photo.t1  { background: linear-gradient(135deg, #1c1c1c, #4a4a4a 45%, #8c8c8c); }
+    .photo.t2  { background: radial-gradient(circle at 35% 65%, #b4b4b4, #555 38%, #1f1f1f 100%); }
+    .photo.t3  { background: linear-gradient(180deg, #7a7a7a, #4a4a4a 55%, #161616); }
+    .photo.t4  { background: linear-gradient(45deg, #1f1f1f, #3a3a3a 60%, #5a5a5a); }
+    .photo.t5  { background: radial-gradient(ellipse at 70% 30%, #c8c8c8, #6a6a6a 50%, #1f1f1f 100%); }
+    .photo.t6  { background: linear-gradient(160deg, #4a4a4a, #6e6e6e 35%, #3a3a3a 70%, #1c1c1c); }
+    .photo.t7  { background: linear-gradient(200deg, #9a9a9a, #4a4a4a 60%, #181818); }
+    .photo.t8  { background: radial-gradient(circle at 50% 30%, #b8b8b8, #5a5a5a 45%, #232323 100%); }
+    .photo.t9  { background: linear-gradient(135deg, #6a6a6a, #2a2a2a); }
+    .photo.t10 { background: linear-gradient(180deg, #5a5a5a, #6a6a6a 30%, #3a3a3a 75%, #1a1a1a); }
+    .photo.t11 { background: radial-gradient(ellipse at 50% 50%, #6a6a6a, #2c2c2c 100%); }
+    .photo.t12 { background: linear-gradient(60deg, #2a2a2a, #5a5a5a 50%, #9a9a9a); }
+
+    /* === Projects === */
+    .filter-row {
+      display: flex; gap: 6px;
+      padding: 18px var(--space-lg) 12px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .filter-row::-webkit-scrollbar { display: none; }
+    .chip {
+      padding: 7px 13px;
+      border-radius: var(--radius-pill);
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      font-family: var(--font-ui);
+      font-size: 12px; font-weight: 500;
+      color: var(--text-2);
+      white-space: nowrap;
+      cursor: pointer;
+      letter-spacing: 0.1px;
+      transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+    }
+    .chip:active { background: var(--surface-3); }
+    .chip.active {
+      background: var(--text-1);
+      color: var(--bg);
+      border-color: var(--text-1);
+      font-weight: 600;
+    }
+    .chip .num { opacity: 0.55; font-family: var(--font-mono); font-size: 11px; margin-left: 4px; }
+    .chip.active .num { opacity: 0.7; }
+
+    .project-list {
+      display: flex; flex-direction: column;
+      gap: 1px;
+      background: var(--border);
+    }
+    .project-card {
+      background: var(--bg);
+      padding: 14px var(--space-lg);
+      display: flex; align-items: center; gap: 14px;
+      cursor: pointer;
+      transition: background 140ms ease;
+    }
+    .project-card:active { background: var(--surface-2); }
+    .project-thumb {
+      width: 56px; height: 56px;
+      border-radius: var(--radius-md);
+      flex-shrink: 0;
+      background: var(--surface-3);
+      overflow: hidden;
+      position: relative;
+    }
+    .project-thumb::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: var(--noise-url);
+      background-size: 90px 90px;
+      opacity: 0.2;
+      mix-blend-mode: overlay;
+    }
+    .project-thumb::after {
+      content: '';
+      position: absolute; inset: 0;
+      box-shadow: inset 0 0 18px var(--photo-vignette);
+    }
+    .project-meta { flex: 1; min-width: 0; }
+    .project-title {
+      font-size: 14.5px; font-weight: 600;
+      color: var(--text-1);
+      margin-bottom: 4px;
+      letter-spacing: -0.2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .project-sub {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: var(--text-2);
+      letter-spacing: 0.3px;
+      display: flex; align-items: center; gap: 6px;
+    }
+    .project-sub .sep { width: 2px; height: 2px; border-radius: 50%; background: var(--text-3); }
+    .pill {
+      font-family: var(--font-mono);
+      font-size: 9.5px; font-weight: 700;
+      letter-spacing: 1.2px;
+      padding: 4px 8px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--border-strong);
+      color: var(--text-2);
+      text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .pill.open { color: var(--text-1); border-color: var(--text-2); }
+    .pill.synced { color: var(--text-2); }
+    .pill.sealed { color: var(--text-3); border-color: var(--border); }
+
+    /* === Bottom bar === */
+    .bottom-bar {
+      position: relative;
+      height: 72px;
+      flex-shrink: 0;
+      background: var(--bg);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: stretch;
+      justify-content: space-between;
+    }
+    .tab-btn {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 4px;
+      cursor: pointer;
+      color: var(--text-3);
+      transition: color 140ms ease;
+      position: relative;
+    }
+    .tab-btn svg { display: block; transition: stroke 140ms ease; }
+    .tab-btn .label {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 1.4px;
+      font-weight: 600;
+      text-transform: uppercase;
+      opacity: 0;
+      transition: opacity 200ms ease;
+    }
+    .tab-btn.active { color: var(--text-1); }
+    .tab-btn.active .label { opacity: 1; }
+    .tab-btn.active::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 50%;
+      transform: translateX(-50%);
+      width: 28px; height: 2px;
+      background: var(--text-1);
+      border-radius: 0 0 2px 2px;
+    }
+
+    /* Shutter — raised circle */
+    .shutter-slot {
+      flex: 0 0 96px;
+      position: relative;
+    }
+    .shutter {
+      position: absolute;
+      left: 50%; bottom: 10px;
+      width: 64px; height: 64px;
+      transform: translateX(-50%);
+      border-radius: 50%;
+      background: var(--shutter-fill);
+      box-shadow: var(--shutter-shadow);
+      display: grid; place-items: center;
+      cursor: pointer;
+      transition: transform 140ms cubic-bezier(0.4, 0, 0.2, 1), box-shadow 140ms ease;
+      z-index: 5;
+    }
+    .shutter::after {
+      content: '';
+      position: absolute;
+      inset: 5px;
+      border-radius: 50%;
+      border: 1.5px solid var(--bg);
+      pointer-events: none;
+    }
+    .shutter:active {
+      transform: translateX(-50%) scale(0.92);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 0 6px var(--bg);
+    }
+    .shutter svg {
+      width: 24px; height: 24px;
+      color: var(--shutter-icon);
+      position: relative;
+      z-index: 1;
+    }
+
+    /* Gesture nav */
+    .gesture-nav {
+      height: 24px;
+      flex-shrink: 0;
+      display: grid;
+      place-items: center;
+      background: var(--bg);
+    }
+    .gesture-pill {
+      width: 132px; height: 4px;
+      background: var(--text-1);
+      border-radius: var(--radius-pill);
+      opacity: 0.85;
+    }
+
+    /* === Camera modal === */
+    .camera-overlay {
+      position: absolute;
+      inset: 0;
+      background: #000;
+      transform: translateY(100%);
+      transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
+      z-index: 50;
+      display: flex; flex-direction: column;
+    }
+    .camera-overlay.open { transform: translateY(0); }
+
+    .cam-status {
+      height: 36px; flex-shrink: 0;
+      padding: 0 22px 0 26px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-family: var(--font-mono);
+      font-size: 13px; font-weight: 600;
+      color: #f4f4f4;
+      letter-spacing: -0.2px;
+    }
+    .cam-status .right { display: flex; align-items: center; gap: 6px; }
+
+    .cam-top {
+      height: 56px; flex-shrink: 0;
+      padding: 0 var(--space-lg);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .cam-close {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      background: rgba(255,255,255,0.08);
+      color: #f4f4f4;
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      border: 1px solid rgba(255,255,255,0.1);
+      transition: transform 100ms ease;
+    }
+    .cam-close:active { transform: scale(0.92); }
+    .cam-mode {
+      font-family: var(--font-mono);
+      font-size: 10.5px; font-weight: 700;
+      letter-spacing: 2px;
+      color: #f4f4f4;
+      padding: 7px 13px;
+      background: rgba(255,255,255,0.08);
+      border-radius: var(--radius-pill);
+      border: 1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(8px);
+    }
+
+    .viewfinder {
+      flex: 1;
+      position: relative;
+      overflow: hidden;
+      background:
+        radial-gradient(ellipse at 50% 40%, rgba(120,120,120,0.18), transparent 55%),
+        linear-gradient(180deg, #181818 0%, #2a2a2a 45%, #1a1a1a 100%);
+    }
+    /* Stub subject: vague electrical-panel suggestion */
+    .viewfinder::before {
+      content: '';
+      position: absolute;
+      left: 22%; top: 28%;
+      width: 56%; height: 44%;
+      background:
+        linear-gradient(180deg, #3a3a3a 0%, #2a2a2a 100%);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 4px;
+      box-shadow:
+        inset 0 0 30px rgba(0,0,0,0.6),
+        0 6px 18px rgba(0,0,0,0.4);
+    }
+    /* Rule-of-thirds overlay */
+    .vf-grid {
+      position: absolute; inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(to right, rgba(255,255,255,0.08) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.08) 1px, transparent 1px);
+      background-size: 33.333% 33.333%;
+    }
+    .vf-focus {
+      position: absolute;
+      left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      width: 56px; height: 56px;
+      border: 1px solid rgba(255,255,255,0.55);
+      border-radius: 3px;
+      pointer-events: none;
+    }
+    .vf-focus::before, .vf-focus::after {
+      content: '';
+      position: absolute;
+      background: rgba(255,255,255,0.65);
+    }
+    .vf-focus::before {
+      left: 50%; top: -3px; width: 1px; height: 6px;
+      transform: translateX(-50%);
+    }
+    .vf-focus::after {
+      top: 50%; left: -3px; height: 1px; width: 6px;
+      transform: translateY(-50%);
+    }
+
+    .cam-bottom {
+      height: 156px; flex-shrink: 0;
+      padding: 12px var(--space-lg) 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      gap: 10px;
+      background: linear-gradient(180deg, transparent 0%, #000 50%);
+    }
+    .cam-modes {
+      display: flex; align-items: center; gap: 18px;
+      font-family: var(--font-mono);
+      font-size: 10.5px; font-weight: 600;
+      letter-spacing: 1.6px;
+      color: rgba(255,255,255,0.45);
+      text-transform: uppercase;
+      padding: 4px 0 6px;
+    }
+    .cam-modes .mode { cursor: pointer; }
+    .cam-modes .mode.active { color: #f4f4f4; }
+    .cam-meta {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: rgba(255,255,255,0.5);
+      letter-spacing: 1.6px;
+      text-transform: uppercase;
+    }
+    .cam-shutter-wrap {
+      display: flex; align-items: center; justify-content: center; gap: 36px;
+      width: 100%;
+      padding-top: 4px;
+    }
+    .cam-tool {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.1);
+      display: grid; place-items: center;
+      color: rgba(255,255,255,0.85);
+      cursor: pointer;
+      backdrop-filter: blur(8px);
+      transition: transform 100ms ease;
+    }
+    .cam-tool:active { transform: scale(0.92); }
+    .cam-shutter {
+      width: 72px; height: 72px;
+      border-radius: 50%;
+      background: #f4f4f4;
+      box-shadow: 0 0 0 3px #000, 0 0 0 5px #f4f4f4;
+      cursor: pointer;
+      transition: transform 120ms ease;
+    }
+    .cam-shutter:active { transform: scale(0.92); }
+    .cam-gesture {
+      height: 24px; flex-shrink: 0;
+      display: grid; place-items: center;
+      background: #000;
+    }
+    .cam-gesture-pill {
+      width: 132px; height: 4px;
+      background: rgba(255,255,255,0.9);
+      border-radius: var(--radius-pill);
+    }
+
+    /* === Albums shortcut FAB === */
+    .albums-fab {
+      position: absolute;
+      bottom: 14px;
+      right: 14px;
+      z-index: 9;
+      width: 52px;
+      height: 52px;
+      padding: 0;
+      display: grid;
+      place-items: center;
+      background: var(--surface-1);
+      border: 1px solid var(--border-strong);
+      border-radius: 50%;
+      color: var(--text-1);
+      cursor: pointer;
+      box-shadow:
+        0 8px 22px rgba(0,0,0,0.40),
+        0 2px 6px rgba(0,0,0,0.30),
+        0 1px 0 rgba(255,255,255,0.05) inset;
+      transition: transform 100ms ease, opacity 220ms ease;
+    }
+    [data-theme="light"] .albums-fab {
+      box-shadow:
+        0 8px 18px rgba(0,0,0,0.14),
+        0 2px 6px rgba(0,0,0,0.08),
+        0 1px 0 rgba(0,0,0,0.02) inset;
+    }
+    .albums-fab:active { transform: scale(0.94); }
+    .albums-fab svg { display: block; }
+    .albums-fab.hide {
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(10px) scale(0.92);
+    }
+
+    /* === Albums grid view (full-body overlay) === */
+    .albums-view {
+      position: absolute;
+      inset: 0;
+      background: var(--bg);
+      z-index: 14;
+      transform: translateY(100%);
+      transition: transform 340ms cubic-bezier(0.32, 0.72, 0, 1);
+      display: flex; flex-direction: column;
+    }
+    .albums-view.open { transform: translateY(0); }
+
+    .albums-head {
+      height: 56px; flex-shrink: 0;
+      padding: 0 6px;
+      display: flex; align-items: center;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg);
+      position: relative;
+    }
+    .albums-head .head-btn {
+      width: 40px; height: 40px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      color: var(--text-1);
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      transition: background 140ms ease, transform 100ms ease;
+    }
+    .albums-head .head-btn:active { background: var(--surface-2); transform: scale(0.94); }
+    .albums-title {
+      flex: 1;
+      text-align: center;
+      font-size: 16px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text-1);
+    }
+    .albums-search-bar {
+      margin: 12px var(--space-lg) 4px;
+      height: 40px;
+      padding: 0 12px;
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      flex-shrink: 0;
+    }
+    .albums-search-bar svg { color: var(--text-3); flex-shrink: 0; }
+    .albums-search-bar input {
+      flex: 1;
+      background: transparent;
+      border: none;
+      outline: none;
+      color: var(--text-1);
+      font-family: var(--font-ui);
+      font-size: 14px;
+      letter-spacing: -0.1px;
+    }
+    .albums-search-bar input::placeholder { color: var(--text-3); }
+
+    .albums-list {
+      flex: 1;
+      overflow-y: auto;
+      padding-bottom: 24px;
+      scrollbar-width: none;
+    }
+    .albums-list::-webkit-scrollbar { display: none; }
+
+    .albums-month {
+      padding: 16px var(--space-lg) 10px;
+      font-family: var(--font-mono);
+      font-size: 10px;
+      letter-spacing: 1.7px;
+      text-transform: uppercase;
+      color: var(--text-3);
+      font-weight: 600;
+      display: flex; align-items: baseline; justify-content: space-between;
+    }
+    .albums-month.hidden { display: none; }
+    .albums-month .month-count {
+      font-weight: 500;
+      letter-spacing: 0.4px;
+    }
+
+    .albums-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 18px 12px;
+      padding: 0 var(--space-lg) 8px;
+    }
+    .album-tile {
+      border: none;
+      background: transparent;
+      text-align: left;
+      cursor: pointer;
+      padding: 0;
+      position: relative;
+      display: flex; flex-direction: column;
+      gap: 10px;
+      font-family: var(--font-ui);
+      transition: transform 120ms ease;
+    }
+    .album-tile.hidden { display: none; }
+    .album-tile:active { transform: scale(0.97); }
+    .album-tile-stack {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1;
+      margin-top: 6px;
+    }
+    .album-tile-stack::before,
+    .album-tile-stack::after {
+      content: '';
+      position: absolute;
+      left: 6%; right: 6%;
+      top: -4px; bottom: 4px;
+      border-radius: var(--radius-md);
+      background: var(--surface-3);
+      border: 1px solid var(--border);
+      z-index: 0;
+    }
+    .album-tile-stack::after {
+      left: 12%; right: 12%;
+      top: -8px; bottom: 8px;
+      opacity: 0.5;
+    }
+    .album-tile-cover {
+      position: relative;
+      width: 100%; height: 100%;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      z-index: 2;
+    }
+    .album-tile-cover::before {
+      content: '';
+      position: absolute; inset: 0;
+      background-image: var(--noise-url);
+      background-size: 100px 100px;
+      opacity: 0.18;
+      mix-blend-mode: overlay;
+    }
+    .album-tile-cover::after {
+      content: '';
+      position: absolute; inset: 0;
+      box-shadow: inset 0 0 26px var(--photo-vignette);
+    }
+    .album-tile-count {
+      position: absolute;
+      top: 6px; right: 6px;
+      z-index: 3;
+      font-family: var(--font-mono);
+      font-size: 10px; font-weight: 700;
+      letter-spacing: 0.4px;
+      padding: 3px 8px;
+      background: rgba(0,0,0,0.55);
+      color: #f8f8f8;
+      border-radius: var(--radius-pill);
+      backdrop-filter: blur(6px);
+    }
+    [data-theme="light"] .album-tile-count {
+      background: rgba(255,255,255,0.85);
+      color: #0a0a0a;
+    }
+    .album-tile-info {
+      display: flex; flex-direction: column;
+      gap: 3px;
+    }
+    .album-tile-label {
+      font-size: 13.5px;
+      font-weight: 600;
+      letter-spacing: -0.15px;
+      color: var(--text-1);
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .album-tile-sub {
+      font-family: var(--font-mono);
+      font-size: 10.5px;
+      color: var(--text-3);
+      letter-spacing: 0.3px;
+    }
+
+    .albums-empty {
+      padding: 60px 24px;
+      text-align: center;
+      color: var(--text-3);
+      font-size: 13px;
+      display: none;
+    }
+    .albums-empty.show { display: block; }
+
+    /* Capture flash */
+    .flash {
+      position: absolute; inset: 0;
+      background: #fff;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 60;
+    }
+    .flash.flash-on {
+      animation: flashAnim 220ms ease-out;
+    }
+    @keyframes flashAnim {
+      0% { opacity: 0; }
+      30% { opacity: 0.85; }
+      100% { opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+  <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">☾</button>
+
+  <div class="device">
+    <span class="pwr"></span>
+    <div class="phone">
+    <!-- Status bar -->
+    <div class="status-bar">
+      <span>9:41</span>
+      <span class="status-right">
+        <svg width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="0.5"/><rect x="4.5" y="5" width="3" height="6" rx="0.5"/><rect x="9" y="3" width="3" height="8" rx="0.5"/><rect x="13.5" y="0" width="3" height="11" rx="0.5"/></svg>
+        <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><path d="M7 0C4.4 0 2 1 0 2.8l1.2 1.2c1.6-1.4 3.6-2.2 5.8-2.2s4.2.8 5.8 2.2L14 2.8C12 1 9.6 0 7 0Zm0 3.6c-1.6 0-3.2.6-4.5 1.7l1.3 1.3c1-.8 2.2-1.2 3.2-1.2s2.2.4 3.2 1.2l1.3-1.3C10.2 4.2 8.6 3.6 7 3.6Zm0 3.5c-1 0-1.9.3-2.6 1l2.6 2.6 2.6-2.6c-.7-.7-1.6-1-2.6-1Z"/></svg>
+        <svg width="24" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="21" height="10" rx="2" stroke="currentColor" fill="none"/><rect x="22.5" y="3.5" width="1.5" height="4" rx="0.5" fill="currentColor"/><rect x="2" y="2" width="17" height="7" rx="1" fill="currentColor"/></svg>
+      </span>
+    </div>
+
+    <!-- Brand bar -->
+    <div class="brand-bar">
+      <div class="brand-left">
+        <div class="logomark" aria-label="TechNotes"></div>
+        <div class="brand-date">WED 13 MAY</div>
+      </div>
+      <div class="brand-right">
+        <div class="icon-btn" aria-label="Search">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        </div>
+        <div class="icon-btn" aria-label="Menu">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+        </div>
+      </div>
+    </div>
+
+    <!-- Body / tab views -->
+    <div class="body">
+      <!-- Recents -->
+      <div class="tab-view active" id="recentsView">
+        <div class="section-header" data-section="s0">
+          <span>Today · 14:18</span>
+          <span class="rule"></span>
+          <span class="count">6</span>
+        </div>
+        <div class="photo-grid">
+          <div class="photo t1"></div>
+          <div class="photo t2"></div>
+          <div class="photo t3"></div>
+          <div class="photo t4"></div>
+          <div class="photo t5"></div>
+          <div class="photo t6"></div>
+        </div>
+
+        <div class="section-header" data-section="s1">
+          <span>Today · 11:02</span>
+          <span class="rule"></span>
+          <span class="count">4</span>
+        </div>
+        <div class="photo-grid">
+          <div class="photo t7"></div>
+          <div class="photo t8"></div>
+          <div class="photo t9"></div>
+          <div class="photo t10"></div>
+        </div>
+
+        <div class="section-header" data-section="s2">
+          <span>Yesterday · 16:40</span>
+          <span class="rule"></span>
+          <span class="count">4</span>
+        </div>
+        <div class="photo-grid">
+          <div class="photo t11"></div>
+          <div class="photo t12"></div>
+          <div class="photo t1"></div>
+          <div class="photo t5"></div>
+        </div>
+
+        <div class="section-header" data-section="s3">
+          <span>May 8 · Boiler audit</span>
+          <span class="rule"></span>
+          <span class="count">9</span>
+        </div>
+        <div class="photo-grid">
+          <div class="photo t6"></div>
+          <div class="photo t7"></div>
+          <div class="photo t2"></div>
+          <div class="photo t8"></div>
+          <div class="photo t3"></div>
+          <div class="photo t9"></div>
+          <div class="photo t11"></div>
+          <div class="photo t4"></div>
+          <div class="photo t10"></div>
+        </div>
+      </div>
+
+      <!-- Projects -->
+      <div class="tab-view" id="projectsView">
+        <div class="filter-row">
+          <div class="chip active">All<span class="num">7</span></div>
+          <div class="chip">Open<span class="num">3</span></div>
+          <div class="chip">Sealed<span class="num">3</span></div>
+          <div class="chip">Synced<span class="num">1</span></div>
+          <div class="chip">Archived</div>
+        </div>
+        <div class="project-list">
+          <div class="project-card">
+            <div class="project-thumb t5"></div>
+            <div class="project-meta">
+              <div class="project-title">Sub-station 14B inspection</div>
+              <div class="project-sub"><span>14:18 today</span><span class="sep"></span><span>32 photos</span></div>
+            </div>
+            <div class="pill open">Open</div>
+          </div>
+          <div class="project-card">
+            <div class="project-thumb t8"></div>
+            <div class="project-meta">
+              <div class="project-title">Cooling tower service</div>
+              <div class="project-sub"><span>11:02 today</span><span class="sep"></span><span>18 photos</span></div>
+            </div>
+            <div class="pill open">Open</div>
+          </div>
+          <div class="project-card">
+            <div class="project-thumb t11"></div>
+            <div class="project-meta">
+              <div class="project-title">Roof drain repair · north</div>
+              <div class="project-sub"><span>Yesterday</span><span class="sep"></span><span>27 photos</span></div>
+            </div>
+            <div class="pill open">Open</div>
+          </div>
+          <div class="project-card">
+            <div class="project-thumb t6"></div>
+            <div class="project-meta">
+              <div class="project-title">Boiler audit · annex</div>
+              <div class="project-sub"><span>May 8</span><span class="sep"></span><span>54 photos</span></div>
+            </div>
+            <div class="pill synced">Synced</div>
+          </div>
+          <div class="project-card">
+            <div class="project-thumb t2"></div>
+            <div class="project-meta">
+              <div class="project-title">Conduit run · loading dock</div>
+              <div class="project-sub"><span>May 6</span><span class="sep"></span><span>21 photos</span></div>
+            </div>
+            <div class="pill sealed">Sealed</div>
+          </div>
+          <div class="project-card">
+            <div class="project-thumb t9"></div>
+            <div class="project-meta">
+              <div class="project-title">HVAC zone 3 retrofit</div>
+              <div class="project-sub"><span>May 3</span><span class="sep"></span><span>71 photos</span></div>
+            </div>
+            <div class="pill sealed">Sealed</div>
+          </div>
+          <div class="project-card">
+            <div class="project-thumb t7"></div>
+            <div class="project-meta">
+              <div class="project-title">Valve replacement · L-12</div>
+              <div class="project-sub"><span>Apr 29</span><span class="sep"></span><span>14 photos</span></div>
+            </div>
+            <div class="pill sealed">Sealed</div>
+          </div>
+        </div>
+      </div>
+
+    <!-- Albums shortcut FAB (only on Recents tab) -->
+    <button class="albums-fab" id="albumsFab" aria-label="Open albums">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="7" y="3" width="14" height="14" rx="2"/>
+        <rect x="3" y="7" width="14" height="14" rx="2"/>
+      </svg>
+    </button>
+
+    <!-- Albums grid view -->
+    <div class="albums-view" id="albumsView" role="dialog" aria-label="Albums">
+      <div class="albums-head">
+        <button class="head-btn" id="albumsBack" aria-label="Back to recents">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="albums-title">Albums</div>
+        <div style="width: 40px"></div>
+      </div>
+      <div class="albums-search-bar">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="albumsSearch" type="text" placeholder="Find an album…" autocomplete="off" />
+      </div>
+      <div class="albums-list" id="albumsList">
+        <div class="albums-month" data-month-id="m-may"><span>May 2026</span><span class="month-count">12 sessions · 86 photos</span></div>
+        <div class="albums-grid" data-month-grid="m-may">
+          <button class="album-tile" data-target="s0" data-label="today 14 18 sub-station">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t1"></div>
+              <div class="album-tile-count">6</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Today · 14:18</div><div class="album-tile-sub">Sub-station 14B</div></div>
+          </button>
+          <button class="album-tile" data-target="s1" data-label="today 11 02 cooling tower">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t7"></div>
+              <div class="album-tile-count">4</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Today · 11:02</div><div class="album-tile-sub">Cooling tower</div></div>
+          </button>
+          <button class="album-tile" data-target="s2" data-label="yesterday 16 40 roof drain">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t11"></div>
+              <div class="album-tile-count">4</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Yesterday · 16:40</div><div class="album-tile-sub">Roof drain</div></div>
+          </button>
+          <button class="album-tile" data-label="may 11 site walkthrough">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t5"></div>
+              <div class="album-tile-count">12</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">May 11 · Walkthrough</div><div class="album-tile-sub">13:22 – 15:08</div></div>
+          </button>
+          <button class="album-tile" data-target="s3" data-label="may 8 boiler audit">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t6"></div>
+              <div class="album-tile-count">9</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">May 8 · Boiler audit</div><div class="album-tile-sub">Annex · 09:30 – 11:15</div></div>
+          </button>
+          <button class="album-tile" data-label="may 7 morning">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t10"></div>
+              <div class="album-tile-count">4</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">May 7 · 11:00</div><div class="album-tile-sub">Loose</div></div>
+          </button>
+          <button class="album-tile" data-label="may 5 roof inspection">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t3"></div>
+              <div class="album-tile-count">15</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">May 5 · Roof inspect.</div><div class="album-tile-sub">10:12 – 12:48</div></div>
+          </button>
+          <button class="album-tile" data-label="may 2 afternoon">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t9"></div>
+              <div class="album-tile-count">3</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">May 2 · 17:30</div><div class="album-tile-sub">Loose</div></div>
+          </button>
+        </div>
+
+        <div class="albums-month" data-month-id="m-apr"><span>April 2026</span><span class="month-count">8 sessions · 92 photos</span></div>
+        <div class="albums-grid" data-month-grid="m-apr">
+          <button class="album-tile" data-label="apr 29 valve l-12">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t7"></div>
+              <div class="album-tile-count">14</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Apr 29 · Valve L-12</div><div class="album-tile-sub">14:00 – 16:42</div></div>
+          </button>
+          <button class="album-tile" data-label="apr 27 hvac zone 3 retrofit">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t9"></div>
+              <div class="album-tile-count">28</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Apr 27 · HVAC zone 3</div><div class="album-tile-sub">Retrofit · all day</div></div>
+          </button>
+          <button class="album-tile" data-label="apr 22 morning">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t4"></div>
+              <div class="album-tile-count">5</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Apr 22 · 11:18</div><div class="album-tile-sub">Loose</div></div>
+          </button>
+          <button class="album-tile" data-label="apr 14 conduit run loading dock">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t2"></div>
+              <div class="album-tile-count">21</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Apr 14 · Conduit run</div><div class="album-tile-sub">Loading dock</div></div>
+          </button>
+          <button class="album-tile" data-label="apr 5">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t12"></div>
+              <div class="album-tile-count">6</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Apr 5 · 08:42</div><div class="album-tile-sub">Loose</div></div>
+          </button>
+        </div>
+
+        <div class="albums-month" data-month-id="m-mar"><span>March 2026</span><span class="month-count">5 sessions · 37 photos</span></div>
+        <div class="albums-grid" data-month-grid="m-mar">
+          <button class="album-tile" data-label="mar 28 cooling tower service">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t8"></div>
+              <div class="album-tile-count">18</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Mar 28 · Cooling t.</div><div class="album-tile-sub">Service</div></div>
+          </button>
+          <button class="album-tile" data-label="mar 20">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t1"></div>
+              <div class="album-tile-count">8</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Mar 20 · 14:12</div><div class="album-tile-sub">Loose</div></div>
+          </button>
+          <button class="album-tile" data-label="mar 12">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t5"></div>
+              <div class="album-tile-count">4</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Mar 12 · 09:45</div><div class="album-tile-sub">Loose</div></div>
+          </button>
+          <button class="album-tile" data-label="mar 5">
+            <div class="album-tile-stack">
+              <div class="album-tile-cover photo t6"></div>
+              <div class="album-tile-count">7</div>
+            </div>
+            <div class="album-tile-info"><div class="album-tile-label">Mar 5 · 16:00</div><div class="album-tile-sub">Loose</div></div>
+          </button>
+        </div>
+        <div class="albums-empty" id="albumsEmpty">No albums match.</div>
+      </div>
+    </div>
+    </div><!-- /.body -->
+
+    <!-- Bottom bar -->
+    <div class="bottom-bar">
+      <div class="tab-btn active" data-tab="recents" id="recentsTab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="3" width="7" height="7" rx="1.2"/>
+          <rect x="14" y="3" width="7" height="7" rx="1.2"/>
+          <rect x="3" y="14" width="7" height="7" rx="1.2"/>
+          <rect x="14" y="14" width="7" height="7" rx="1.2"/>
+        </svg>
+        <span class="label">Recents</span>
+      </div>
+
+      <div class="shutter-slot">
+        <div class="shutter" id="shutter" aria-label="Open camera">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="tab-btn" data-tab="projects" id="projectsTab">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7Z"/>
+        </svg>
+        <span class="label">Projects</span>
+      </div>
+    </div>
+
+    <!-- Gesture nav -->
+    <div class="gesture-nav">
+      <div class="gesture-pill"></div>
+    </div>
+
+    <!-- Camera overlay -->
+    <div class="camera-overlay" id="cameraOverlay">
+      <div class="cam-status">
+        <span>9:41</span>
+        <span class="right">
+          <svg width="16" height="11" viewBox="0 0 16 11" fill="currentColor"><rect x="0" y="7" width="3" height="4" rx="0.5"/><rect x="4.5" y="5" width="3" height="6" rx="0.5"/><rect x="9" y="3" width="3" height="8" rx="0.5"/><rect x="13.5" y="0" width="3" height="11" rx="0.5"/></svg>
+          <svg width="14" height="11" viewBox="0 0 14 11" fill="currentColor"><path d="M7 0C4.4 0 2 1 0 2.8l1.2 1.2c1.6-1.4 3.6-2.2 5.8-2.2s4.2.8 5.8 2.2L14 2.8C12 1 9.6 0 7 0Zm0 3.6c-1.6 0-3.2.6-4.5 1.7l1.3 1.3c1-.8 2.2-1.2 3.2-1.2s2.2.4 3.2 1.2l1.3-1.3C10.2 4.2 8.6 3.6 7 3.6Zm0 3.5c-1 0-1.9.3-2.6 1l2.6 2.6 2.6-2.6c-.7-.7-1.6-1-2.6-1Z"/></svg>
+          <svg width="24" height="11" viewBox="0 0 24 11"><rect x="0.5" y="0.5" width="21" height="10" rx="2" stroke="currentColor" fill="none"/><rect x="22.5" y="3.5" width="1.5" height="4" rx="0.5" fill="currentColor"/><rect x="2" y="2" width="17" height="7" rx="1" fill="currentColor"/></svg>
+        </span>
+      </div>
+      <div class="cam-top">
+        <div class="cam-close" id="camClose" aria-label="Close camera">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="cam-mode">AUTO</div>
+        <div style="width:40px"></div>
+      </div>
+      <div class="viewfinder">
+        <div class="vf-grid"></div>
+        <div class="vf-focus"></div>
+      </div>
+      <div class="cam-bottom">
+        <div class="cam-modes">
+          <span class="mode">BURST</span>
+          <span class="mode active">PHOTO</span>
+          <span class="mode">GHOST</span>
+        </div>
+        <div class="cam-shutter-wrap">
+          <div class="cam-tool" aria-label="Toggle grid">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="1"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/></svg>
+          </div>
+          <div class="cam-shutter" id="camShutter" aria-label="Capture"></div>
+          <div class="cam-tool" aria-label="Swap camera">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          </div>
+        </div>
+        <div class="cam-meta">4:3 · 48 MP · LATERAL CAM</div>
+      </div>
+      <div class="cam-gesture">
+        <div class="cam-gesture-pill"></div>
+      </div>
+      <div class="flash" id="flash"></div>
+    </div>
+
+    </div><!-- /.phone -->
+  </div><!-- /.device -->
+
+  <script>
+    // Theme persistence
+    const html = document.documentElement;
+    const toggle = document.getElementById('themeToggle');
+    const stored = localStorage.getItem('tn-theme');
+    if (stored) html.setAttribute('data-theme', stored);
+    const updateToggleIcon = () => {
+      toggle.textContent = html.getAttribute('data-theme') === 'dark' ? '☾' : '☀';
+    };
+    updateToggleIcon();
+    toggle.addEventListener('click', () => {
+      const next = html.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      html.setAttribute('data-theme', next);
+      localStorage.setItem('tn-theme', next);
+      updateToggleIcon();
+    });
+
+    // Tab switching (cross-fade)
+    const recentsTab = document.getElementById('recentsTab');
+    const projectsTab = document.getElementById('projectsTab');
+    const recentsView = document.getElementById('recentsView');
+    const projectsView = document.getElementById('projectsView');
+    const switchTo = (tab) => {
+      if (tab === 'recents') {
+        recentsTab.classList.add('active');
+        projectsTab.classList.remove('active');
+        recentsView.classList.add('active');
+        projectsView.classList.remove('active');
+      } else {
+        projectsTab.classList.add('active');
+        recentsTab.classList.remove('active');
+        projectsView.classList.add('active');
+        recentsView.classList.remove('active');
+      }
+    };
+    recentsTab.addEventListener('click', () => switchTo('recents'));
+    projectsTab.addEventListener('click', () => switchTo('projects'));
+
+    // Camera open / close
+    const overlay = document.getElementById('cameraOverlay');
+    const flash = document.getElementById('flash');
+    document.getElementById('shutter').addEventListener('click', () => overlay.classList.add('open'));
+    document.getElementById('camClose').addEventListener('click', () => overlay.classList.remove('open'));
+    document.getElementById('camShutter').addEventListener('click', () => {
+      flash.classList.remove('flash-on');
+      void flash.offsetWidth;
+      flash.classList.add('flash-on');
+      setTimeout(() => overlay.classList.remove('open'), 260);
+    });
+
+    // Project filter chips
+    document.querySelectorAll('.filter-row .chip').forEach((chip) => {
+      chip.addEventListener('click', () => {
+        document.querySelectorAll('.filter-row .chip').forEach((c) => c.classList.remove('active'));
+        chip.classList.add('active');
+      });
+    });
+
+    // Sticky-shadow on stuck section headers
+    const scroller = recentsView;
+    const headers = scroller.querySelectorAll('.section-header[data-section]');
+    const headerIO = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          const isStuck = e.boundingClientRect.top <= 1 && !e.isIntersecting;
+          e.target.classList.toggle('stuck', isStuck);
+        });
+      },
+      { root: scroller, threshold: [1], rootMargin: '-1px 0px 0px 0px' }
+    );
+    headers.forEach((h) => headerIO.observe(h));
+
+    // Albums shortcut pill → open Albums view
+    const fab = document.getElementById('albumsFab');
+    const albumsView = document.getElementById('albumsView');
+    const albumsBack = document.getElementById('albumsBack');
+    const albumsSearch = document.getElementById('albumsSearch');
+    const albumsEmpty = document.getElementById('albumsEmpty');
+
+    const openAlbums = () => {
+      albumsView.classList.add('open');
+      albumsSearch.value = '';
+      filterAlbums('');
+    };
+    const closeAlbums = () => albumsView.classList.remove('open');
+
+    fab.addEventListener('click', openAlbums);
+    albumsBack.addEventListener('click', closeAlbums);
+
+    // Hide FAB when not on Recents tab
+    const syncFab = () => {
+      const onRecents = recentsTab.classList.contains('active');
+      fab.classList.toggle('hide', !onRecents);
+    };
+    recentsTab.addEventListener('click', syncFab);
+    projectsTab.addEventListener('click', syncFab);
+
+    // Album tile click → close view + smooth-scroll to matching section
+    document.querySelectorAll('.album-tile').forEach((tile) => {
+      tile.addEventListener('click', () => {
+        const targetId = tile.dataset.target;
+        closeAlbums();
+        if (targetId) {
+          setTimeout(() => {
+            const target = scroller.querySelector(`[data-section="${targetId}"]`);
+            if (target) scroller.scrollTo({ top: target.offsetTop - 4, behavior: 'smooth' });
+          }, 240);
+        }
+      });
+    });
+
+    // Album search filter
+    const filterAlbums = (q) => {
+      const query = q.trim().toLowerCase();
+      const tiles = document.querySelectorAll('.album-tile');
+      const months = document.querySelectorAll('.albums-month');
+      tiles.forEach((tile) => {
+        const matches = !query || (tile.dataset.label || '').includes(query);
+        tile.classList.toggle('hidden', !matches);
+      });
+      let totalVisible = 0;
+      months.forEach((m) => {
+        const grid = document.querySelector(`[data-month-grid="${m.dataset.monthId}"]`);
+        if (!grid) return;
+        const visible = grid.querySelectorAll('.album-tile:not(.hidden)').length;
+        m.classList.toggle('hidden', visible === 0);
+        grid.style.display = visible === 0 ? 'none' : '';
+        totalVisible += visible;
+      });
+      albumsEmpty.classList.toggle('show', totalVisible === 0);
+    };
+    albumsSearch.addEventListener('input', (e) => filterAlbums(e.target.value));
+  </script>
+</body>
+</html>

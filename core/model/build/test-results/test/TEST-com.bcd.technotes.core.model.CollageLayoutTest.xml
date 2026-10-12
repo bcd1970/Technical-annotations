@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.bcd.technotes.core.model.CollageLayoutTest" tests="9" skipped="0" failures="0" errors="0" timestamp="2026-04-02T20:47:15" hostname="fedora" time="0.082">
+  <properties/>
+  <testcase name="aspect ratios are positive or zero" classname="com.bcd.technotes.core.model.CollageLayoutTest" time="0.042"/>
+  <testcase name="cells do not overlap" classname="com.bcd.technotes.core.model.CollageLayoutTest" time="0.005"/>
+  <testcase name="cells cover full area for fixed-aspect layouts" classname="com.bcd.technotes.core.model.CollageLayoutTest" time="0.001"/>
+  <testcase name="layoutsForCount returns results for counts 2 through 10" classname="com.bcd.technotes.core.model.CollageLayoutTest" time="0.0"/>
+  <testcase name="layout IDs are unique within each count" classname="com.bcd.technotes.core.model.CollageLayoutTest" time="0.002"/>
+  <testcase name="all cells are within 0-1 bounds" classname="com.bcd.technotes.core.model.CollageLayoutTest" time="0.003"/>
+  <testcase name="serialization round-trip" classname="com.bcd.technotes.core.model.CollageLayoutTest" time="0.025"/>
+  <testcase name="returns empty for count less than 2" classname="com.bcd.technotes.core.model.CollageLayoutTest" time="0.001"/>
+  <testcase name="horizontal row layout exists for every count" classname="com.bcd.technotes.core.model.CollageLayoutTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

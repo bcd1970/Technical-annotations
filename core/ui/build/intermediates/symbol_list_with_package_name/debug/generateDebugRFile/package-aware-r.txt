@@ -1,0 +1,7 @@
+com.bcd.technotes.core.ui
+font ibm_plex_mono_medium
+font ibm_plex_mono_regular
+font ibm_plex_mono_semibold
+font plus_jakarta_sans_medium
+font plus_jakarta_sans_regular
+font plus_jakarta_sans_semibold

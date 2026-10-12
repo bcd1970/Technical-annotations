@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TechNotes — Build Order</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--s1:#111;--s2:#181818;--border:#2a2a2a;--text:#ddd;--dim:#888;--muted:#555;--ph1:#4a9;--ph2:#49a;--ph3:#a94;--ph4:#944}
+body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,sans-serif;font-size:13px;line-height:1.6}
+.header{padding:40px 48px 20px;border-bottom:1px solid var(--border)}
+.header h1{font-size:24px;font-weight:600;margin-bottom:4px}
+.header p{color:var(--dim);font-size:12px}
+.controls{padding:14px 48px;border-bottom:1px solid var(--border);display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.controls span{color:var(--dim);font-size:11px;margin-right:8px}
+button.ph{padding:6px 16px;border:1px solid var(--border);background:var(--s1);color:var(--dim);font-size:11px;font-family:inherit;cursor:pointer;border-radius:3px}
+button.ph:hover{border-color:var(--dim);color:var(--text)}
+button.ph.on[data-p="1"]{border-color:var(--ph1);color:var(--ph1);background:rgba(68,170,153,0.1)}
+button.ph.on[data-p="2"]{border-color:var(--ph2);color:var(--ph2);background:rgba(68,153,170,0.1)}
+button.ph.on[data-p="3"]{border-color:var(--ph3);color:var(--ph3);background:rgba(170,153,68,0.1)}
+button.ph.on[data-p="4"]{border-color:var(--ph4);color:var(--ph4);background:rgba(153,68,68,0.1)}
+#count{margin-left:auto;color:var(--muted);font-size:11px}
+#graph{padding:24px 48px}
+.tier{margin-bottom:20px}
+.tier-head{display:flex;align-items:center;gap:12px;margin-bottom:8px}
+.tier-head .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.12em;white-space:nowrap}
+.tier-head .line{flex:1;height:1px;background:var(--border)}
+.tier-head .num{font-size:11px;color:var(--muted)}
+.atoms{display:flex;flex-wrap:wrap;gap:5px}
+.a{padding:4px 10px;border:1px solid var(--border);background:var(--s1);font-size:11px;cursor:default;white-space:nowrap;border-radius:2px;transition:background 0.1s,border-color 0.1s}
+.a:hover{background:var(--s2);border-color:var(--dim)}
+.a[data-p="1"]{border-left:3px solid var(--ph1)}
+.a[data-p="2"]{border-left:3px solid var(--ph2)}
+.a[data-p="3"]{border-left:3px solid var(--ph3)}
+.a[data-p="4"]{border-left:3px solid var(--ph4)}
+.a .id{color:var(--dim);margin-right:5px;font-family:monospace;font-size:10px}
+.a .nm{color:var(--text)}
+.a .sz{color:var(--muted);margin-left:4px;font-size:9px}
+.a.hi{background:rgba(68,170,153,0.15);border-color:var(--ph1)}
+.a.dep{background:rgba(200,170,50,0.1);border-color:#ca3}
+.a.gone{display:none}
+.tip{position:fixed;background:#1a1a1a;border:1px solid #333;padding:14px 18px;font-size:12px;max-width:340px;z-index:999;display:none;border-radius:4px;box-shadow:0 8px 24px rgba(0,0,0,0.6);pointer-events:none}
+.tip .tid{color:var(--ph1);font-weight:700;font-size:13px;margin-bottom:2px}
+.tip .tnm{margin-bottom:8px}
+.tip .td{color:var(--dim);font-size:11px;margin-bottom:3px}
+.tip .td b{color:#ca3;font-weight:400}
+.tip .tf{color:var(--dim);font-size:11px}
+.tip .tf b{color:var(--ph1);font-weight:400}
+.legend{padding:14px 48px;border-top:1px solid var(--border);display:flex;gap:20px;font-size:11px;color:var(--dim)}
+.legend i{display:inline-block;width:12px;height:10px;border:1px solid;vertical-align:middle;margin-right:4px;border-radius:1px}
+.legend .c1{border-color:var(--ph1);border-left:3px solid var(--ph1)}
+.legend .c2{border-color:var(--ph2);border-left:3px solid var(--ph2)}
+.legend .c3{border-color:var(--ph3);border-left:3px solid var(--ph3)}
+.legend .c4{border-color:var(--ph4);border-left:3px solid var(--ph4)}
+</style>
+</head>
+<body>
+<div class="header">
+<h1>Build Order — Dependency Graph</h1>
+<p>266 atoms · 8 Phase 1 tiers · 4 Phase 2 tiers · Hover to see deps · Click to lock</p>
+</div>
+<div class="controls">
+<span>Phases:</span>
+<button class="ph on" data-p="1">Phase 1 (127)</button>
+<button class="ph" data-p="2">Phase 2 (91)</button>
+<button class="ph" data-p="3">Phase 3 (30)</button>
+<button class="ph" data-p="4">Phase 4 (13)</button>
+<div id="count">127 visible</div>
+</div>
+<div id="graph"></div>
+<div class="legend">
+<div><i class="c1"></i>Phase 1</div>
+<div><i class="c2"></i>Phase 2</div>
+<div><i class="c3"></i>Phase 3</div>
+<div><i class="c4"></i>Phase 4</div>
+<div style="margin-left:20px">S=small M=medium L=large</div>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+// ---- DATA ----
+var D = [
+// [id, name, phase, tier, size, [deps]]
+// Phase 1 Tier 0
+["DS-01","Design tokens",1,0,"M",[]],
+["PD-05","Element type hierarchy",1,0,"M",[]],
+["PD-06","Geometry primitives",1,0,"S",[]],
+["IC-01","Three-mode state machine",1,0,"M",[]],
+["CC-01","CameraX viewfinder",1,0,"M",[]],
+["ON-01","App splash",1,0,"S",[]],
+["L10N-01","String resources (6 lang)",1,0,"M",[]],
+// Tier 1
+["DS-02","Animation system",1,1,"S",["DS-01"]],
+["DS-03","Dark theme",1,1,"S",["DS-01"]],
+["DS-04","Touch targets",1,1,"S",["DS-01"]],
+["DS-05","Icon set",1,1,"M",["DS-01"]],
+["DS-06","Typography",1,1,"S",["DS-01"]],
+["PD-01","Room database",1,1,"M",[]],
+["PD-07","Undo/redo model",1,1,"S",["PD-05"]],
+["CE-01","EditableTouchImageView",1,1,"L",["PD-06"]],
+["CC-02","Camera pre-warming",1,1,"S",["CC-01"]],
+["IC-23","Haptic vocabulary",1,1,"S",["DS-01"]],
+["L10N-03","donottranslate.xml",1,1,"S",["L10N-01"]],
+["L10N-05","Plurals + RTL",1,1,"S",["L10N-01"]],
+["L10N-14","Date/number format",1,1,"S",["L10N-01"]],
+["L10N-17","locales_config",1,1,"S",["L10N-01"]],
+["L10N-18","AAB lang splits off",1,1,"S",["L10N-01"]],
+// Tier 2
+["IC-02","Mode transitions",1,2,"S",["IC-01","DS-02"]],
+["IC-24","Spring physics",1,2,"S",["DS-02"]],
+["CE-02","viewMatrix system",1,2,"M",["CE-01"]],
+["CE-04","GestureRouter",1,2,"M",["CE-01"]],
+["PD-02","Project model",1,2,"S",["PD-01"]],
+["PD-10","Settings DataStore",1,2,"S",["PD-01"]],
+["CE-06","Rendering pipeline",1,2,"M",["CE-01","CE-02","PD-05"]],
+["IC-03","Annotate toolbar",1,2,"M",["IC-01","DS-01"]],
+["IC-06","Semantic ink strip",1,2,"S",["IC-01","DS-01"]],
+["IC-10","Edit toolbar",1,2,"M",["IC-01","DS-01"]],
+["IC-11","Browse chrome",1,2,"S",["IC-01","DS-01"]],
+["L10N-04","ISO 7010 symbols",1,2,"M",["DS-01","L10N-01"]],
+// Tier 3
+["CE-03","Touch→image coords",1,3,"S",["CE-02","PD-06"]],
+["CE-05","Zoom/pan handler",1,3,"S",["CE-04"]],
+["CE-11","Canvas export",1,3,"M",["CE-06"]],
+["PD-03","Photo model",1,3,"M",["PD-01","PD-02"]],
+["IC-04","Tool tray",1,3,"S",["IC-03"]],
+["IC-05","Tool persistence",1,3,"S",["IC-03","PD-10"]],
+["IC-07","Undo/redo engine",1,3,"M",["PD-07","IC-01"]],
+["IC-09","Chrome auto-hide",1,3,"S",["IC-01"]],
+["IC-12","Properties sheet",1,3,"S",["IC-03"]],
+["IC-13","Soft placement",1,3,"S",["CE-06"]],
+["IC-28","Freq-sorted ink",1,3,"S",["IC-06","PD-10"]],
+["ON-04","Project hub",1,3,"M",["PD-02","DS-01"]],
+["ON-07","Settings screen",1,3,"M",["PD-10","DS-01"]],
+["TK-01","Kit data model",1,3,"M",["PD-01","PD-10"]],
+["DP-01","Straight line",1,3,"S",["CE-06","PD-05"]],
+["DP-18","Circle",1,3,"S",["CE-06","PD-05"]],
+["DP-23","Rectangle",1,3,"S",["CE-06","PD-05"]],
+["DP-25","Text annotation",1,3,"M",["CE-06","PD-05"]],
+["DP-27","Diamond",1,3,"S",["CE-06","PD-05"]],
+["DP-28","Triangle",1,3,"S",["CE-06","PD-05"]],
+["DP-30","Freehand curve",1,3,"M",["CE-06","PD-05"]],
+["DP-31","Hatching fill",1,3,"M",["CE-06","PD-05"]],
+["DP-50","Pass/Fail stamps",1,3,"M",["CE-06","PD-05"]],
+["DP-52","Numbered pins",1,3,"M",["CE-06","PD-05"]],
+["EP-01","Flip & rotate",1,3,"S",["IC-10"]],
+["EP-02","Crop tool",1,3,"M",["IC-10","CE-01"]],
+["EP-03","AGSL shaders",1,3,"M",["IC-10"]],
+["IC-29","Text no-blackout",1,3,"M",["DP-25","CE-02"]],
+// Tier 4
+["CE-07","Hit-testing",1,4,"M",["PD-06","CE-03"]],
+["PD-04","Annotation model",1,4,"M",["PD-01","PD-03","PD-05"]],
+["PD-08","Evidence chain",1,4,"S",["PD-03"]],
+["PD-09","Auto-metadata",1,4,"M",["PD-03"]],
+["CC-03","Photo metadata",1,4,"S",["CC-01","PD-09"]],
+["CC-04","Gallery picker",1,4,"S",["PD-03"]],
+["CE-09","Smart labels",1,4,"S",["CE-06","PD-06"]],
+["CE-10","Alignment guides",1,4,"S",["CE-06","PD-06"]],
+["DP-02","Arrowhead renderer",1,4,"M",["DP-01"]],
+["DP-19","Circle + text",1,4,"S",["DP-18","DP-25"]],
+["DP-24","Labeled rectangle",1,4,"S",["DP-23","DP-25"]],
+["DP-32","Revision cloud",1,4,"M",["DP-30"]],
+["DP-63","Polyline",1,4,"M",["CE-06","CE-03"]],
+["DP-51","Defect markers",1,4,"S",["DP-50"]],
+["IC-08","Undo pill",1,4,"S",["IC-07","DS-01"]],
+["IC-22","Back-tap undo",1,4,"S",["IC-07"]],
+["IC-21","Color as gesture",1,4,"S",["IC-06","CE-04"]],
+["IC-27","Swipe between photos",1,4,"M",["IC-01","IC-05","CE-04"]],
+["TK-02","Kit activation",1,4,"M",["TK-01","IC-03"]],
+["TK-04","Kit↔tool resolver",1,4,"S",["TK-01","PD-05"]],
+["TK-06","Kit catalog UI",1,4,"M",["TK-01","DS-01"]],
+["TK-11","Kit semantic colors",1,4,"S",["TK-01","IC-06"]],
+["ON-05","Project creation",1,4,"S",["ON-04","PD-02"]],
+["ON-08","Warm launch",1,4,"S",["ON-04","IC-01"]],
+["IC-26","Quick-label dict",1,4,"M",["DP-25","PD-01"]],
+["L10N-02","Locale switching",1,4,"S",["L10N-01","ON-07"]],
+["VO-06","Eng. autocomplete",1,4,"M",["PD-01","DP-25"]],
+["DP-62","Snap-to-close",1,4,"S",["DP-30","CE-03","IC-23"]],
+["DP-56","Metadata overlay",1,4,"M",["CE-06","PD-09"]],
+// Tier 5
+["CE-08","Selection handles",1,5,"M",["CE-07"]],
+["DP-03","Arrow (single)",1,5,"S",["DP-01","DP-02"]],
+["DP-04","Arrow (double)",1,5,"S",["DP-01","DP-02"]],
+["DP-05","Leader + text",1,5,"M",["DP-01","DP-02","DP-25"]],
+["DP-13","Dimension line",1,5,"M",["DP-01","DP-02"]],
+["DP-64","Polygon",1,5,"S",["DP-63"]],
+["PD-14","Provenance meta",1,5,"S",["PD-04"]],
+["IC-14","Smart Paper",1,5,"L",["DP-30","DP-18","DP-23","DP-03"]],
+["IC-30","Photo-aware labels",1,5,"S",["CE-09"]],
+["CL-01","Collage engine",1,5,"L",["CE-01","PD-03"]],
+["EX-01","Burned-in JPEG",1,5,"M",["CE-11","PD-04"]],
+["EX-02","Sidecar JSON",1,5,"M",["PD-04","PD-05"]],
+["TK-03","Five launch kits",1,5,"L",["TK-01","TK-02"]],
+["ON-02","Onboarding",1,5,"M",["ON-01","TK-01"]],
+// Tier 6
+["DP-14a","Angular dimension",1,6,"M",["DP-13"]],
+["DP-53","Flow arrows",1,6,"S",["DP-03"]],
+["IC-20","Draw=Annotate",1,6,"S",["IC-01","IC-14"]],
+["EX-03","Metadata burn-in",1,6,"S",["EX-01","PD-09"]],
+["EX-05","Share Sheet",1,6,"S",["EX-01","EX-02"]],
+["EX-10","Collage export",1,6,"M",["CL-01","EX-01"]],
+["IL-02","Annotation Envelope",1,6,"M",["EX-02","PD-05"]],
+["CL-02","Before/After",1,6,"S",["CL-01"]],
+["CL-03","Forensic 3-Shot",1,6,"S",["CL-01"]],
+["CL-04","Quad View",1,6,"S",["CL-01"]],
+["CL-05","Process Sequence",1,6,"S",["CL-01"]],
+["CL-06","Hero+Details",1,6,"S",["CL-01"]],
+["CL-07","Cell zoom/pan/swap",1,6,"M",["CL-01","CE-05"]],
+["CL-08","Metadata bar/cell",1,6,"S",["CL-01","PD-09"]],
+["CL-14","Semantic borders",1,6,"S",["CL-01","IC-06"]],
+["CL-15","Border drag resize",1,6,"M",["CL-01"]],
+["ON-03","Work question UI",1,6,"S",["ON-02"]],
+["EX-04","PDF report",1,6,"L",["EX-01","PD-02"]],
+// Tier 7
+["IL-01","Share Sheet L1",1,7,"S",["EX-01","EX-05"]],
+["ON-10","Completion ritual",1,7,"M",["IC-01","EX-01"]],
+["IC-33","Micro-share",1,7,"S",["EX-05","ON-10"]],
+["IC-32","Safety bar",1,7,"S",["PD-04","EX-01"]],
+];
+
+// Build lookup and feeds
+var map = {};
+D.forEach(function(d){ map[d[0]] = {id:d[0],nm:d[1],ph:d[2],tier:d[3],sz:d[4],deps:d[5],feeds:[]}; });
+D.forEach(function(d){ d[5].forEach(function(dep){ if(map[dep]) map[dep].feeds.push(d[0]); }); });
+
+// State
+var phases = {1:true, 2:false, 3:false, 4:false};
+var locked = null;
+
+// Render
+function render(){
+  var vis = D.filter(function(d){ return phases[d[2]]; });
+  var tiers = {};
+  vis.forEach(function(d){
+    var k = d[3];
+    if(!tiers[k]) tiers[k] = [];
+    tiers[k].push(d);
+  });
+  var keys = Object.keys(tiers).map(Number).sort(function(a,b){return a-b;});
+  var html = "";
+  keys.forEach(function(k){
+    var atoms = tiers[k];
+    html += '<div class="tier"><div class="tier-head"><span class="label">Tier '+k+'</span><div class="line"></div><span class="num">'+atoms.length+' atoms</span></div><div class="atoms">';
+    atoms.forEach(function(d){
+      html += '<div class="a" data-p="'+d[2]+'" data-id="'+d[0]+'"><span class="id">'+d[0]+'</span><span class="nm">'+d[1]+'</span><span class="sz">'+d[4]+'</span></div>';
+    });
+    html += '</div></div>';
+  });
+  document.getElementById("graph").innerHTML = html;
+  document.getElementById("count").textContent = vis.length + " visible";
+
+  // Re-attach events
+  document.querySelectorAll(".a").forEach(function(el){
+    el.addEventListener("mouseenter", function(e){ showTip(e, el.getAttribute("data-id")); });
+    el.addEventListener("mouseleave", hideTip);
+    el.addEventListener("click", function(){ toggleLock(el.getAttribute("data-id")); });
+  });
+}
+
+function showTip(e, id){
+  var a = map[id];
+  if(!a) return;
+  var depStr = a.deps.length ? a.deps.join(", ") : "none";
+  var feedStr = a.feeds.length ? a.feeds.join(", ") : "none";
+  var tip = document.getElementById("tip");
+  tip.innerHTML = '<div class="tid">'+a.id+'</div><div class="tnm">'+a.nm+'</div><div class="td">← Depends on: <b>'+depStr+'</b></div><div class="tf">→ Feeds into: <b>'+feedStr+'</b></div>';
+  tip.style.display = "block";
+  var x = Math.min(e.clientX + 14, window.innerWidth - 360);
+  var y = Math.min(e.clientY + 14, window.innerHeight - 100);
+  tip.style.left = x + "px";
+  tip.style.top = y + "px";
+  if(!locked) highlight(id);
+}
+
+function hideTip(){
+  document.getElementById("tip").style.display = "none";
+  if(!locked) clearHL();
+}
+
+function highlight(id){
+  clearHL();
+  var a = map[id];
+  if(!a) return;
+  var el = document.querySelector('[data-id="'+id+'"]');
+  if(el) el.classList.add("hi");
+  a.deps.forEach(function(d){
+    var del = document.querySelector('[data-id="'+d+'"]');
+    if(del) del.classList.add("dep");
+  });
+  a.feeds.forEach(function(f){
+    var fel = document.querySelector('[data-id="'+f+'"]');
+    if(fel) fel.classList.add("hi");
+  });
+}
+
+function clearHL(){
+  document.querySelectorAll(".a").forEach(function(el){ el.classList.remove("hi","dep"); });
+}
+
+function toggleLock(id){
+  if(locked === id){ locked = null; clearHL(); }
+  else { locked = id; highlight(id); }
+}
+
+// Phase buttons
+document.querySelectorAll("button.ph").forEach(function(btn){
+  btn.addEventListener("click", function(){
+    var p = parseInt(btn.getAttribute("data-p"));
+    phases[p] = !phases[p];
+    if(phases[p]) btn.classList.add("on");
+    else btn.classList.remove("on");
+    locked = null;
+    render();
+  });
+});
+
+// Init
+render();
+</script>
+</body>
+</html>

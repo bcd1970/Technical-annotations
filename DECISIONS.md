@@ -16,6 +16,30 @@ Each feature implementation tracks decisions, attempts, and outcomes.
 
 ---
 
+## Multi-Module Architecture Restructure — 2026-04-02
+
+**Goal:** Restructure from flat 3-module layout (:app, :core, :sandbox) to 13-module architecture per SETUP-ENVIRONMENT.md, establishing module boundaries before SESSION 01+ of the Implementation Blueprint.
+
+| # | Decision / Attempt | Outcome | Notes |
+|---|-------------------|---------|-------|
+| 1 | buildSrc with AppConfig.kt for shared constants (SDK versions, app ID) | SUCCESS | Eliminates duplication across 13 build.gradle.kts files |
+| 2 | Split :core into :core:model (pure JVM), :core:image (Android lib), :core:project (Android lib) | SUCCESS | :core:model keeps same package (com.bcd.technotes.core.model), processing/serialization get new packages |
+| 3 | PhotoTransform rewritten with pure Kotlin RectF from Geometry.kt, moved to :core:model | SUCCESS | Enables pure JVM compilation. BitmapService uses ModelRectF.toAndroid() conversion extension for canvas operations |
+| 4 | ImageEditState moved to :core:model (not :feature:editor) | SUCCESS | BitmapService in :core:image needs it — can't depend on feature modules. EditTool enum co-located |
+| 5 | CollageResult stays in :core:image (uses android.graphics.Bitmap) | SUCCESS | Android-dependent type, accessed by BitmapService and CanvasViewModel |
+| 6 | Cross-feature routing extracted from CanvasScreen to :app AppNavigation | SUCCESS | CanvasScreen exposes onOpenPicker/onOpenEditor lambdas. :app manages showPicker/showEditor state and composes feature screens. No feature-to-feature dependencies. |
+| 7 | updateDoubleTapScale duplicated into :feature:picker (private) and :feature:editor (private) | SUCCESS | Small utility (7 lines). Avoids creating a shared module for one function. Original stays in :feature:canvas. |
+| 8 | :core:ui design system with monochrome gray ramp, bundled TTF fonts | SUCCESS | TechNotesTheme composable with ExtendedColors, Spacing, Radius composition locals. Plus Jakarta Sans + IBM Plex Mono downloaded from Google Fonts CDN. |
+| 9 | Navigation shell created but NOT wired | SUCCESS | AppNavigation.kt has manual if/return routing matching old CanvasScreen pattern. Compose Navigation deferred to SESSION 01-03. |
+| 10 | Stub modules for :core:drawing, :core:overlay, :core:undo, :feature:export | SUCCESS | Empty classes/composables. Ready for Implementation Blueprint sessions. |
+| 11 | Smart cast fix for cross-module nullable RectF | SUCCESS | Kotlin requires local val for smart cast on properties from different modules. Added `val crop = transform.cropRect` pattern in BitmapService. |
+| 12 | All 13 modules compile, :app and :sandbox assembleDebug pass | SUCCESS | 256 Gradle tasks, zero failures. Unit tests in :core:model pass. |
+| 13 | LaunchedEffect auto-open picker loop after routing extraction | FAILED | CanvasScreen leaves composition when picker shows → re-enters fresh → LaunchedEffect fires again → infinite loop. Fixed with `autoOpenPicker` flag tracked in AppNavigation. |
+| 14 | Single photo not auto-entering editor | FAILED | Sandbox auto-enters WholeImageEditScreen for single photos (line 238). App's AppNavigation was missing this behavior. Fixed by setting `showEditor = true` when picker returns 1 URI. |
+| 15 | WholeImageEditScreen editor wiring missing | FAILED | AppNavigation had `onOpenEditor = { }` placeholder. Wired with bitmap passing from CanvasViewModel + proper onDone/onCancel callbacks. |
+
+---
+
 ## Guided Filter Highlight/Shadow/Sharpness Pipeline — 2026-04-01
 
 **Goal:** Replace per-pixel highlight/shadow (halos, mushy output) with professional edge-aware guided filter decomposition + improved adaptive sharpening

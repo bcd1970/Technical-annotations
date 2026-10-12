@@ -1,5 +1,26 @@
 # Technical Annotations — Project Rules
 
+## Module Architecture
+
+Multi-module project. Strict dependency rules:
+
+- :core:model (pure Kotlin) — leaf module, no dependencies
+- :core:ui (Android + Compose) — monochrome design system, depends on :core:model only
+- :core:drawing, :core:image, :core:project, :core:overlay, :core:undo → depend on :core:model only
+- :feature:canvas, :feature:picker, :feature:editor, :feature:export → depend on :core:* modules (including :core:ui), NEVER on each other
+- :app → depends on everything, contains only MainActivity, navigation, DI (NO theme — theme is in :core:ui)
+- :sandbox → depends on :core:* only, has its own throwaway UI
+
+## Design System
+
+Monochrome. Zero chroma in UI chrome. See ui-monochrome-design-system.html.
+- All colors are gray stops from #090909 to #f8f8f8
+- Active = brightness (bright on dark, dark on light). No accent hue.
+- Custom theme: TechNotesTheme in :core:ui — use it, never hardcode colors
+- Typography: Plus Jakarta Sans (UI text) + IBM Plex Mono (labels, readouts)
+- Spacing: xs=4dp, sm=8dp, md=12dp, lg=16dp, xl=24dp
+- Radii: sm=6dp, md=8dp, lg=14dp, xl=16dp, pill=999dp
+
 ## Plan-First Workflow (MANDATORY)
 
 Before implementing ANY new feature or making significant code changes:
@@ -9,7 +30,7 @@ Before implementing ANY new feature or making significant code changes:
 3. **Get user approval** — call `ExitPlanMode` and wait for approval
 4. **Only then implement** — write code only after the plan is approved
 
-This applies to any work that touches source files in `app/src/`, `sandbox/src/`, or `core/src/`. It does NOT apply to:
+This applies to any work that touches source files in `app/src/`, `feature/*/src/`, `core/*/src/`, or `sandbox/src/`. It does NOT apply to:
 - Bug fixes (single-line or obvious fixes)
 - Config/build file changes
 - Updating DECISIONS.md or documentation
@@ -22,14 +43,13 @@ Every feature implementation must be logged in `DECISIONS.md` at the project roo
 - Include the reasoning (why it worked or didn't)
 - Failed attempts stay in the log — they are part of the history
 
-## Sandbox-First Workflow
+## Sandbox-First Pipeline
 
-Every feature follows this strict pipeline:
-1. `:core` — data model + business logic (pure Kotlin, unit tested)
-2. `:sandbox` — build and test the feature on the phone
-3. `:app` — port only after user confirms it works in sandbox
-
-The sandbox tests ONE feature at a time. Only add UI controls for the feature being tested.
+1. :core:* — Pure Kotlin data models + logic (unit tested, no emulator)
+2. :sandbox — Build feature UI, deploy to phone, user confirms
+3. /port — Classify changes, rewrite cleanly into :feature:* and :core:*, verify parity
+4. Build both :app and :sandbox APKs → Install both → Confirm identical behavior
+5. Update DECISIONS.md → Audit compliance → Commit & push
 
 ## Port Verification (MANDATORY)
 
